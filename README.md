@@ -230,19 +230,14 @@ docker-compose ps
 ### Шаг 4 — Первая ингестация (холодный старт)
 
 Через Prefect UI http://localhost:4200:
-Flows → tslots-ingest → Run → Confirm
-
-Или через терминал:
-```bash
-docker exec tslots-prefect-worker python /app/prefect/flows/ingest.py
-```
+Deployments → tslots-daily-ingest → Run (кнопка вверху справа) → Quick Run
 
 Prefect заберёт все данные из МойСклад без ограничений по дате.
 Следи за логами: Prefect UI → Flow Runs → последний запуск → Logs.
 
 ### Шаг 5 — dbt трансформации
 
-Через Prefect UI: Flows → tslots-transform → Run
+Через Prefect UI: Deployments → tslots-daily-transform → Run → Quick Run
 
 Или через терминал:
 ```bash

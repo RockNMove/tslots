@@ -1,42 +1,32 @@
 """
-deploy.py — регистрирует tslots flows в Prefect с расписанием.
+deploy.py — регистрирует tslots pipeline в Prefect с расписанием.
 
-Запускается однократно при старте prefect-worker контейнера.
-После регистрации deployments worker запускается отдельно.
+Запускается автоматически при старте prefect-worker контейнера.
+Расписание только у pipeline — остальные flow запускаются из него.
 """
 
-import time
-from dotenv import load_dotenv
 from prefect.client.schemas.schedules import CronSchedule
 
-load_dotenv()
+from pipeline import tslots_pipeline_flow
 
-from ingest import tslots_ingest_flow
-from transform import tslots_transform_flow
+FLOWS_DIR = "/app/prefect/flows"
 
 
 def main():
-    print("Регистрируем deployments в Prefect...")
+    print("Регистрируем pipeline deployment в Prefect...")
 
-    ingest_deployment = tslots_ingest_flow.to_deployment(
-        name="tslots-daily-ingest",
-        schedules=[CronSchedule(cron="0 3 * * *", timezone="UTC")],
-        description="Ежедневная загрузка из МойСклад → PostgreSQL raw (03:00 UTC)",
-        tags=["tslots", "production", "ingest"],
+    tslots_pipeline_flow.from_source(
+        source=FLOWS_DIR,
+        entrypoint="pipeline.py:tslots_pipeline_flow",
+    ).deploy(
+        name="tslots-daily-pipeline",
+        work_pool_name="default-agent-pool",
+        schedules=[CronSchedule(cron="0 3 * * *", timezone="Europe/Moscow")],
+        description="Ежедневный полный цикл: raw → bronze → silver → gold (03:00 МСК)",
+        tags=["tslots", "production"],
     )
 
-    transform_deployment = tslots_transform_flow.to_deployment(
-        name="tslots-daily-transform",
-        schedules=[CronSchedule(cron="30 3 * * *", timezone="UTC")],
-        description="Ежедневный dbt run: staging → intermediate → marts (03:30 UTC)",
-        tags=["tslots", "production", "transform"],
-    )
-
-    # Применяем deployments к серверу
-    ingest_deployment.apply()
-    transform_deployment.apply()
-
-    print("✅ Deployments зарегистрированы успешно")
+    print("✅ Deployment зарегистрирован успешно")
 
 
 if __name__ == "__main__":

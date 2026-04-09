@@ -1,12 +1,8 @@
 """
 ingest.py — Prefect flow: МойСклад API → PostgreSQL raw layer.
 
-Локальный запуск (без Prefect-сервера):
-    pipenv run python prefect/flows/ingest.py
-
-С Prefect UI (в отдельном терминале сначала):
-    pipenv run prefect server start
-    pipenv run python prefect/flows/ingest.py
+Запускается через Prefect UI:
+    Deployments → tslots-daily-ingest → Run → Quick Run
 """
 
 import os
@@ -17,14 +13,9 @@ from typing import Optional
 import requests
 import psycopg2
 import psycopg2.extras
-from dotenv import load_dotenv
 from prefect import flow, task, get_run_logger
 from prefect.variables import Variable
 from prefect.context import get_run_context
-
-# Загружаем .env — для локального запуска без Docker
-# В Docker переменные передаются через environment: в compose, load_dotenv() просто ничего не делает
-load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Конфигурация
@@ -212,19 +203,18 @@ def log_sync_finish(
 def tslots_ingest_flow():
     logger = get_run_logger()
 
-    # Prefect run context (для flow_run_id в логах)
     ctx = get_run_context()
-    flow_run_id = str(ctx.flow_run.id) if ctx else "local-manual"
+    flow_run_id = str(ctx.flow_run.id) if ctx else "manual"
 
-    # ── Читаем метку последней успешной синхронизации ──────────────────────
-    # Variable.get вернёт None если переменная не создана → холодный старт
-    last_sync_raw = Variable.get("LAST_SUCCESSFUL_SYNC", default=None)
+    # Читаем метку последней успешной синхронизации.
+    # None → холодный старт → забираем всё без фильтра по дате.
+    last_sync_raw = Variable.get("last_successful_sync", default=None)
     is_cold_start = last_sync_raw is None
     sync_batch    = datetime.now(timezone.utc)
 
     if is_cold_start:
         logger.warning(
-            "⚠️  ХОЛОДНЫЙ СТАРТ: LAST_SUCCESSFUL_SYNC не задана. "
+            "⚠️  ХОЛОДНЫЙ СТАРТ: last_successful_sync не задана. "
             "Забираем все данные без ограничений по дате."
         )
         last_sync = None
@@ -232,19 +222,16 @@ def tslots_ingest_flow():
         last_sync = last_sync_raw
         logger.info(f"Инкрементальный запуск. Данные с: {last_sync}")
 
-    log_id    = log_sync_start(is_cold=is_cold_start, sync_batch=sync_batch, flow_run_id=flow_run_id)
+    log_id     = log_sync_start(is_cold=is_cold_start, sync_batch=sync_batch, flow_run_id=flow_run_id)
     rows_stats = {}
 
     try:
-        # ── Справочники ────────────────────────────────────────────────────
-
         store_rows = fetch_entity(
             "store", last_sync=last_sync,
             extra_params={"expand": "zones,slots.zone"},
         )
         rows_stats["stores"] = save_to_raw(store_rows, "stores", sync_batch)
 
-        # UOM обновляются редко — всегда берём всё целиком
         uom_rows = fetch_entity("uom", last_sync=None)
         rows_stats["uoms"] = save_to_raw(uom_rows, "uoms", sync_batch)
 
@@ -262,8 +249,6 @@ def tslots_ingest_flow():
 
         agent_rows = fetch_entity("counterparty", last_sync=last_sync)
         rows_stats["agents"] = save_to_raw(agent_rows, "agents", sync_batch)
-
-        # ── Документы (движения по ячейкам) ───────────────────────────────
 
         doc_expand = "positions.slot,positions.assortment,agent"
         doc_filter = "applicable=true"
@@ -288,24 +273,19 @@ def tslots_ingest_flow():
         )
         rows_stats["moves"] = save_to_raw(move_rows, "moves", sync_batch)
 
-        # ── Успех: обновляем метку ─────────────────────────────────────────
-        # Фиксируем время НАЧАЛА батча (не конца).
-        # Если во время загрузки в МойСклад пришли новые документы —
+        # Фиксируем время НАЧАЛА батча — не конца.
+        # Если во время загрузки в МойСклад пришли новые документы,
         # они попадут в следующий инкрементальный запуск.
         new_sync_ts = sync_batch.strftime("%Y-%m-%d %H:%M:%S")
-        Variable.set("LAST_SUCCESSFUL_SYNC", new_sync_ts)
+        Variable.set("last_successful_sync", new_sync_ts, overwrite=True)
 
-        logger.info(f"✅ Готово. LAST_SUCCESSFUL_SYNC → {new_sync_ts}")
+        logger.info(f"✅ Готово. last_successful_sync → {new_sync_ts}")
         logger.info(f"   Статистика: {rows_stats}")
         log_sync_finish(log_id, rows_stats, status="success")
 
     except Exception as exc:
-        # НЕ обновляем LAST_SUCCESSFUL_SYNC → следующий запуск повторит период
+        # НЕ обновляем last_successful_sync → следующий запуск повторит период
         error_msg = str(exc)
         logger.error(f"❌ Flow упал: {error_msg}")
         log_sync_finish(log_id, rows_stats, status="failed", error=error_msg)
         raise
-
-
-if __name__ == "__main__":
-    tslots_ingest_flow()
