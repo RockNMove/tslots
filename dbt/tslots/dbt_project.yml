@@ -1,0 +1,28 @@
+name: 'tslots'
+version: '1.0.0'
+config-version: 2
+
+profile: 'tslots'
+
+model-paths: ["models"]
+test-paths:  ["tests"]
+seed-paths:  ["seeds"]
+macro-paths: ["macros"]
+
+models:
+  tslots:
+    staging:
+      +materialized: view
+      +schema: bronze
+    intermediate:
+      +materialized: table
+      +schema: silver
+    marts:
+      +materialized: table
+      +schema: gold
+
+vars:
+  # Тариф за одну ячейку в день (рублей).
+  # Меняется без правки кода:
+  #   dbt run --vars '{"rate_per_slot_day": 75}'
+  rate_per_slot_day: 50

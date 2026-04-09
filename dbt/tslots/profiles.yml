@@ -1,0 +1,14 @@
+tslots:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host:     "{{ env_var('DBT_DB_HOST',     'localhost') }}"
+      port:     5432
+      user:     "{{ env_var('DBT_DB_USER') }}"
+      password: "{{ env_var('DBT_DB_PASSWORD') }}"
+      dbname:   "{{ env_var('DBT_DB_NAME',     'tslots') }}"
+      schema:   public
+      threads:  4
+      connect_timeout: 10
+      search_path: "raw_moysklad,bronze,silver,gold,public"

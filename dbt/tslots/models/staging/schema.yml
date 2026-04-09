@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: stg_operations
+    description: "Все операционные документы в единой таблице позиций"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: slot_id
+        tests: [not_null]
+      - name: op_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['in', 'out']
+      - name: type
+        tests:
+          - accepted_values:
+              values: ['demand', 'supply', 'loss', 'enter', 'move']
+      - name: quantity
+        tests: [not_null]
+
+  - name: stg_stores
+    description: "Иерархия склад → зона → ячейка"
+    columns:
+      - name: slot_id
+        tests: [unique, not_null]
+
+  - name: stg_products
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: stg_agents
+    columns:
+      - name: agent_id
+        tests: [unique, not_null]
+
+  - name: int_slot_occupancy
+    description: "Интервалы занятости ячеек (ключевая бизнес-модель)"
+    columns:
+      - name: slot_id
+        tests: [not_null]
+      - name: occupied_from
+        tests: [not_null]
+      - name: days_occupied
+        tests: [not_null]
+
+  - name: mart_billing
+    description: "Ежемесячные начисления по поклажедателям"
+    columns:
+      - name: billing_month
+        tests: [not_null]
+      - name: depositor_id
+        tests: [not_null]
+      - name: amount_rub
+        tests: [not_null]
