@@ -6,9 +6,10 @@ name = "pypi"
 [packages]
 dbt-postgres = "==1.10.0"
 prefect = "==3.1.0"
-psycopg2-binary = "==2.9.9"
 requests = "==2.31.0"
-python-dotenv = "==1.0.1"
+pandas = "==3.0.0"
+sqlalchemy = "==2.0.36"
+pg8000 = "==1.31.2"
 
 [dev-packages]
 

@@ -1,5 +1,11 @@
--- models/marts/mart_slot_status.sql
--- Текущее состояние склада: какие ячейки заняты прямо сейчас.
+-- mart_slot_status.sql — текущее состояние склада.
+--
+-- Показывает только ячейки занятые прямо сейчас (is_currently_occupied = true).
+-- Это все интервалы у которых freed_at = NULL — товар ещё не ушёл.
+--
+-- Используется Grafana для отображения карты занятости склада
+-- и панели "Занято ячеек сейчас".
+
 {{ config(materialized='table') }}
 
 select
@@ -16,6 +22,7 @@ select
     depositor_inn,
     quantity,
     occupied_from,
+    -- Сколько дней ячейка занята непрерывно — для сортировки и алертов.
     round(
         extract(epoch from (now() - occupied_from)) / 86400.0,
         1

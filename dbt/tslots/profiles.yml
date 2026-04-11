@@ -1,14 +1,23 @@
+# profiles.yml — настройки подключения dbt к PostgreSQL.
+#
+# dbt читает этот файл чтобы знать куда подключаться.
+# Все значения берутся из переменных окружения которые Docker передаёт контейнеру.
+# Локально переменные задаются в .env файле.
+
 tslots:
   target: dev
   outputs:
     dev:
       type: postgres
+      # Внутри Docker используем имя сервиса postgres (не localhost).
       host:     "{{ env_var('DBT_DB_HOST',     'localhost') }}"
       port:     5432
       user:     "{{ env_var('DBT_DB_USER') }}"
       password: "{{ env_var('DBT_DB_PASSWORD') }}"
       dbname:   "{{ env_var('DBT_DB_NAME',     'tslots') }}"
-      schema:   public
+      # Базовая схема — переопределяется макросом generate_schema_name.
+      schema:   layer
       threads:  4
       connect_timeout: 10
-      search_path: "raw_moysklad,bronze,silver,gold,public"
+      # Порядок поиска схем при запросах без явного указания схемы.
+      search_path: "layer_raw,layer_bronze,layer_silver,layer_gold,public"

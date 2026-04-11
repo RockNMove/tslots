@@ -1,17 +1,27 @@
--- models/intermediate/int_slot_occupancy.sql
+-- int_slot_occupancy.sql — интервалы занятости ячеек. Ключевая бизнес-модель.
 --
--- Ключевая бизнес-модель: интервалы занятости ячеек.
+-- ЗАДАЧА: МойСклад хранит события (приход/уход товара), нам нужны интервалы.
 -- Для каждой пары (ячейка + товар) склеиваем in-событие с ближайшим out-событием.
--- Если out ещё не было → freed_at = NULL (ячейка занята прямо сейчас).
+-- Результат: [occupied_from, freed_at]. Если freed_at = NULL — ячейка занята сейчас.
+--
+-- АЛГОРИТМ:
+--   1. Разделяем события на in (supply, enter, move_in) и out (demand, loss, move_out).
+--   2. Нумеруем каждую группу через ROW_NUMBER() по (slot_id, prod_id, date).
+--   3. LEFT JOIN по номеру: первый in → первый out, второй in → второй out и т.д.
+--   4. LEFT JOIN: если out ещё не было → freed_at = NULL (открытый интервал).
+--   5. Обогащаем данными о товаре, варианте и поклажедателе.
 
 {{ config(materialized='table') }}
 
 with ops as (
+    -- Берём все операции из staging, только с заполненной ячейкой.
     select * from {{ ref('stg_operations') }}
     where slot_id is not null
 ),
 
 ins as (
+    -- In-события: приход товара в ячейку.
+    -- ROW_NUMBER нумерует каждое in-событие по порядку для данной ячейки и товара.
     select
         slot_id,
         prod_id,
@@ -29,6 +39,8 @@ ins as (
 ),
 
 outs as (
+    -- Out-события: уход товара из ячейки.
+    -- ROW_NUMBER нумерует каждое out-событие так же как ins.
     select
         slot_id,
         prod_id,
@@ -43,9 +55,9 @@ outs as (
     where op_type = 'out'
 ),
 
--- Склеиваем: первый in → первый out, второй in → второй out и т.д.
--- LEFT JOIN: если out ещё нет → freed_at = NULL (открытый интервал)
 intervals as (
+    -- Склеиваем: первый in → первый out, второй in → второй out (по rn).
+    -- LEFT JOIN: если out ещё нет → freed_at = NULL → ячейка занята сейчас.
     select
         i.slot_id,
         i.prod_id,
@@ -65,6 +77,7 @@ intervals as (
 ),
 
 enriched as (
+    -- Обогащаем интервалы данными о ячейке, товаре и поклажедателе.
     select
         iv.slot_id,
         sl.slot_name,
@@ -74,25 +87,27 @@ enriched as (
 
         iv.prod_id,
         va.variant_id,
-        coalesce(pr.name,  pr2.name)    as product_name,
+        -- Товар может быть variant (у него есть product_id) или product напрямую.
+        coalesce(pr.name,    pr2.name)    as product_name,
         coalesce(pr.article, pr2.article) as article,
         va.lot,
         va.mfg_date,
 
-        -- Поклажедатель: сначала из атрибута товара, потом из агента документа
+        -- Поклажедатель: сначала из атрибута товара, потом из агента документа.
         coalesce(pr.depositor_id, pr2.depositor_id, iv.op_agent_id) as depositor_id,
-        ag.name                         as depositor_name,
-        ag.inn                          as depositor_inn,
+        ag.name                           as depositor_name,
+        ag.inn                            as depositor_inn,
 
         iv.occupied_from,
         iv.freed_at,
 
-        -- Длительность в сутках; для открытых интервалов считаем до текущего момента
+        -- Длительность в сутках. Для открытых интервалов считаем до текущего момента.
         extract(
             epoch from (coalesce(iv.freed_at, now()) - iv.occupied_from)
-        ) / 86400.0                     as days_occupied,
+        ) / 86400.0                       as days_occupied,
 
-        (iv.freed_at is null)           as is_currently_occupied,
+        -- Признак что ячейка занята прямо сейчас (нет события out).
+        (iv.freed_at is null)             as is_currently_occupied,
 
         iv.in_doc_id,
         iv.in_doc_type,
@@ -101,9 +116,9 @@ enriched as (
         iv.quantity
 
     from intervals iv
-    left join {{ ref('stg_stores') }}   sl on sl.slot_id    = iv.slot_id
-    left join {{ ref('stg_variants') }} va on va.variant_id = iv.prod_id
-    left join {{ ref('stg_products') }} pr on pr.product_id = va.product_id
+    left join {{ ref('stg_stores') }}   sl  on sl.slot_id    = iv.slot_id
+    left join {{ ref('stg_variants') }} va  on va.variant_id = iv.prod_id
+    left join {{ ref('stg_products') }} pr  on pr.product_id = va.product_id
     left join {{ ref('stg_products') }} pr2 on pr2.product_id = iv.prod_id
     left join {{ ref('stg_agents') }}   ag
            on ag.agent_id = coalesce(pr.depositor_id, pr2.depositor_id, iv.op_agent_id)

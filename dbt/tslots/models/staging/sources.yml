@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: moysklad
-    schema: raw_moysklad
+    schema: layer_raw
     description: "Сырые данные из МойСклад API (загружает Prefect flow tslots-ingest)"
 
     freshness:
@@ -11,35 +11,5 @@ sources:
     loaded_at_field: loaded_at
 
     tables:
-      - name: stores
-        description: "Склады со списком зон и ячеек"
-
-      - name: uoms
-        description: "Единицы измерения"
-
-      - name: products
-        description: "Товары с атрибутами (включая Поклажедатель)"
-        columns:
-          - name: ms_id
-            tests: [unique, not_null]
-
-      - name: variants
-        description: "Модификации товаров (партии, даты выработки)"
-
-      - name: agents
-        description: "Контрагенты — поклажедатели"
-
-      - name: demands
-        description: "Отгрузки (товар уходит со склада)"
-
-      - name: supplies
-        description: "Приёмки (товар приходит на склад)"
-
-      - name: losses
-        description: "Списания"
-
-      - name: enters
-        description: "Оприходования"
-
-      - name: moves
-        description: "Перемещения между ячейками"
+      - name: raw
+        description: "Все сущности МойСклад — одна строка = один объект API, entity = тип объекта"

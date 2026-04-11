@@ -1,28 +1,39 @@
+# dbt_project.yml — главный конфиг dbt проекта tslots.
+#
+# Определяет:
+#   - где искать модели, тесты, макросы
+#   - в какую схему PostgreSQL материализовать каждый слой
+#   - переменные проекта (тариф хранения)
+
 name: 'tslots'
 version: '1.0.0'
 config-version: 2
 
+# Имя профиля подключения из profiles.yml.
 profile: 'tslots'
 
 model-paths: ["models"]
 test-paths:  ["tests"]
-seed-paths:  ["seeds"]
+seed-paths:  ["seeds"] 
 macro-paths: ["macros"]
 
 models:
   tslots:
     staging:
+      # layer_bronze: простые view поверх raw — не занимают место, всегда свежие.
       +materialized: view
       +schema: bronze
     intermediate:
+      # layer_silver: тяжёлые джойны — материализуем в таблицу чтобы не считать каждый раз.
       +materialized: table
       +schema: silver
     marts:
+      # layer_gold: финальные витрины для Grafana — таблицы для быстрого чтения.
       +materialized: table
       +schema: gold
 
 vars:
   # Тариф за одну ячейку в день (рублей).
-  # Меняется без правки кода:
+  # Изменить без правки кода:
   #   dbt run --vars '{"rate_per_slot_day": 75}'
   rate_per_slot_day: 50
