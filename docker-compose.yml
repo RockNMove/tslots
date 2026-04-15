@@ -9,6 +9,9 @@
 #   grafana          — дашборды (localhost:3000)
 #
 # Переменные окружения читаются из файла .env в корне проекта.
+# Docker Compose читает .env по умолчанию — он автоматически ищет файл .env 
+# в той же папке где лежит docker-compose.yml, без явного указания. 
+# Это встроенное поведение Docker Compose.
 # Один и тот же docker-compose.yml работает локально и на сервере —
 # меняется только .env.
 # =============================================================================
@@ -92,6 +95,7 @@ services:
     command: >
       sh -c "
         cd /app/prefect/flows &&
+        prefect work-pool create default-agent-pool --type process || true &&
         python deploy.py &&
         prefect worker start --pool default-agent-pool
       "

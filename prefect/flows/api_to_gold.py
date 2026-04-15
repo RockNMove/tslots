@@ -10,17 +10,14 @@ api_to_gold.py — единственный flow проекта tslots.
 
 # INIT
 
-import json
 import os
 import subprocess
-from datetime import datetime, timezone
 
 import pandas as pd
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB
 from prefect import flow, task, get_run_logger
-from prefect.variables import Variable
 
 MS_TOKEN = os.environ["MS_TOKEN"]
 DB_HOST = os.environ["DB_HOST"]
@@ -68,36 +65,24 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
 def ingest():
     logger = get_run_logger()
 
-    start = Variable.get("last_successful_sync", default=None)
-    stop = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    if start:
-        logger.info(f"Инкрементальный: {start} → {stop}")
-        date_filter = f"updated>={start};updated<{stop}"
-        in_out_filter = f"updated>={start};updated<{stop};applicable=true"
-    else:
-        logger.warning("Холодный старт — загружаем всё")
-        date_filter = None
-        in_out_filter = "applicable=true"
-
     endpoints = {
-        "store":        {"expand": "zones,slots.zone",                          "filter": date_filter,   "limit": LIMIT},
-        "uom":          {"filter": date_filter,   "limit": LIMIT},
-        "product":      {"expand": "uom,attributes.value",                      "filter": date_filter,   "limit": LIMIT},
-        "variant":      {"expand": "product",                                   "filter": date_filter,   "limit": LIMIT},
-        "counterparty": {"filter": date_filter,   "limit": LIMIT},
-        "demand":       {"expand": "positions.slot,positions.assortment,agent", "filter": in_out_filter, "limit": LIMIT},
-        "supply":       {"expand": "positions.slot,positions.assortment,agent", "filter": in_out_filter, "limit": LIMIT},
-        "loss":         {"expand": "positions.slot,positions.assortment,agent", "filter": in_out_filter, "limit": LIMIT},
-        "enter":        {"expand": "positions.slot,positions.assortment,agent", "filter": in_out_filter, "limit": LIMIT},
-        "move":         {"expand": "positions.targetSlot,positions.sourceSlot", "filter": in_out_filter, "limit": LIMIT},
+        "store":        {"expand": "zones,slots.zone",                          "limit": LIMIT},
+        "uom":          {"limit": LIMIT},
+        "product":      {"expand": "uom,attributes.value",                      "limit": LIMIT},
+        "variant":      {"expand": "product",                                   "limit": LIMIT},
+        "counterparty": {"limit": LIMIT},
+        "demand":       {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
+        "supply":       {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
+        "loss":         {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
+        "enter":        {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
+        "move":         {"expand": "positions.targetSlot,positions.sourceSlot", "filter": "applicable=true", "limit": LIMIT},
     }
 
     records = []
     for endpoint, params in endpoints.items():
         rows = fetch(endpoint, params)
         for row in rows:
-            records.append({"entity": endpoint, "raw_json": json.dumps(row, ensure_ascii=False)})
+            records.append({"entity": endpoint, "raw_json": row})
         logger.info(f"{endpoint}: {len(rows)}")
 
     if not records:
@@ -113,9 +98,7 @@ def ingest():
         chunksize=500,
         dtype={"raw_json": JSONB},
     )
-
-    Variable.set("last_successful_sync", stop, overwrite=True)
-    logger.info(f"✅ last_successful_sync → {stop}")
+    logger.info("✅ Данные записаны в layer_raw.raw")
 
 
 @task(name="dbt", retries=1, retry_delay_seconds=30)

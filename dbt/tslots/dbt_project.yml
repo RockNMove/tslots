@@ -20,11 +20,10 @@ macro-paths: ["macros"]
 models:
   tslots:
     staging:
-      # layer_bronze: простые view поверх raw — не занимают место, всегда свежие.
-      +materialized: view
+      +materialized: table
       +schema: bronze
     intermediate:
-      # layer_silver: тяжёлые джойны — материализуем в таблицу чтобы не считать каждый раз.
+      # layer_gold: финальные витрины для Grafana — таблицы для быстрого чтения.
       +materialized: table
       +schema: silver
     marts:
@@ -32,8 +31,3 @@ models:
       +materialized: table
       +schema: gold
 
-vars:
-  # Тариф за одну ячейку в день (рублей).
-  # Изменить без правки кода:
-  #   dbt run --vars '{"rate_per_slot_day": 75}'
-  rate_per_slot_day: 50

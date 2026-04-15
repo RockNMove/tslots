@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='incremental', unique_key='variant_id', incremental_strategy='merge') }}
 
 select
     raw_json->>'id'                                                     as variant_id,
@@ -15,3 +15,8 @@ select
     (raw_json->>'updated')::timestamptz                                 as updated
 from {{ source('moysklad', 'raw') }}
 where entity = 'variant'
+  and raw_json->>'id' is not null
+  and raw_json->'product'->>'id' is not null
+{% if is_incremental() %}
+    and (raw_json->>'updated')::timestamptz > (select max(updated) from {{ this }})
+{% endif %}

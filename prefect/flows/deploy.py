@@ -17,14 +17,30 @@ deploy.py — регистрирует flow в Prefect с расписанием
 #    подхватит воркер в указанное время.
 # ==============================================================================
 
+import asyncio
 from api_to_gold import api_to_gold
 from prefect.client.schemas.schedules import CronSchedule
+from prefect.client.orchestration import get_client
 
 # Путь к папке с flow-файлами внутри контейнера.
 FLOWS_DIR = "/app/prefect/flows"
+WORK_POOL_NAME = "default-agent-pool"
+
+
+async def ensure_work_pool():
+    async with get_client() as client:
+        try:
+            await client.read_work_pool(WORK_POOL_NAME)
+            print(f"Work pool '{WORK_POOL_NAME}' уже существует")
+        except Exception:
+            await client.create_work_pool(
+                work_pool={"name": WORK_POOL_NAME, "type": "process"}
+            )
+            print(f"Work pool '{WORK_POOL_NAME}' создан")
 
 
 def main():
+    asyncio.run(ensure_work_pool())
     print("Регистрируем deployment в Prefect...")
 
     api_to_gold.from_source(

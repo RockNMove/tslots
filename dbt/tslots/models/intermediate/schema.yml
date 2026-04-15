@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: int_items
+    description: >
+      Единый справочник позиций (товаров и вариантов).
+      В МойСклад операции могут ссылаться как на product, так и на variant —
+      эта модель объединяет оба типа под общим item_id с денормализованными атрибутами.
+    columns:
+      - name: item_id
+        description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
+        tests: [not_null]
+      - name: name
+        description: "Полное название: для варианта — 'товар (партия, дата)', для товара — просто название"
+        tests: [not_null]
+      - name: updated
+        tests: [not_null]
+      - name: product
+        description: "Название родительского товара (NULL для строк-товаров без вариантов)"
+      - name: lot
+        description: "Партия — характеристика варианта (NULL для товаров без вариантов)"
+      - name: mfg_date
+        description: "Дата выработки — характеристика варианта (NULL для товаров без вариантов)"
+      - name: barcodes
+        description: "Штрихкоды в формате JSONB (NULL для товаров без вариантов)"
+      - name: article
+        description: "Артикул товара"
+      - name: weight
+        description: "Вес товара"
+      - name: volume
+        description: "Объём товара"
+      - name: uom
+        description: "Название единицы измерения"
+        tests: [not_null]
+      - name: depositor
+        description: "Название поклажедателя (из атрибута товара)"
+
+  - name: int_slots_extended
+    description: >
+      Справочник ячеек с денормализованными названиями склада и зоны.
+      Используется в витринах и Grafana вместо JOIN-ов к stg_slots + stg_zones + stg_stores.
+    columns:
+      - name: slot_id
+        description: "UUID ячейки"
+        tests: [unique, not_null]
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны (NULL если ячейка без зоны)"
+      - name: name
+        description: "Название ячейки"
+        tests: [not_null]
+      - name: updated
+        description: "Время последнего обновления ячейки"

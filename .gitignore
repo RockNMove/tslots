@@ -1,4 +1,5 @@
 .env
+dbt/tslots/dev_profiles/
 *.pyc
 __pycache__/
 dbt/tslots/target/
