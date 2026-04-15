@@ -3,12 +3,12 @@ WITH
 	dates AS (
 	    SELECT 
 	    	generate_series(min(moment::date), max(moment::date), '1 day'::interval)::date AS moment_day
-	    FROM {{ ref('stg_operations') }}
+	    FROM {{ ref('stg_moy_sklad__operations') }}
 	),
 	slots AS (
-	    SELECT 
-	    	DISTINCT slot_id 
-	    FROM {{ ref('stg_operations') }}
+	    SELECT
+	    	DISTINCT slot_id
+	    FROM {{ ref('stg_moy_sklad__operations') }}
 	),
 	-- 2. Создаем "сетку": каждый слот на каждый день
 	grid AS (
@@ -24,7 +24,7 @@ WITH
 			moment::date
 			, slot_id
 			, sum(quantity) AS daily_change
-		FROM {{ ref('stg_operations') }} so 
+		FROM {{ ref('stg_moy_sklad__operations') }} so
 		GROUP BY moment::date, slot_id
 	),
 	-- 4. Соединяем сетку с изменениями и считаем нарастающий итог
@@ -60,4 +60,4 @@ SELECT
 		ELSE 1
 	END AS is_used
 FROM history
-LEFT JOIN {{ ref('stg_slots') }} slt USING(slot_id)
+LEFT JOIN {{ ref('stg_moy_sklad__slots') }} slt USING(slot_id)

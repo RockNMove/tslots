@@ -75,7 +75,7 @@ def ingest():
         "supply":       {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
         "loss":         {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
         "enter":        {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
-        "move":         {"expand": "positions.targetSlot,positions.sourceSlot", "filter": "applicable=true", "limit": LIMIT},
+        "move":         {"expand": "positions.targetSlot,positions.sourceSlot,positions.assortment", "filter": "applicable=true", "limit": LIMIT},
     }
 
     records = []

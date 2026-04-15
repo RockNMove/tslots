@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: int_items
+  - name: int_items_union
     description: >
       Единый справочник позиций (товаров и вариантов).
       В МойСклад операции могут ссылаться как на product, так и на variant —
@@ -52,3 +52,54 @@ models:
         tests: [not_null]
       - name: updated
         description: "Время последнего обновления ячейки"
+
+  - name: int_ops_extended
+    description: >
+      Операции с денормализованными атрибутами позиций, ячеек и контрагентов.
+      Готовая таблица фактов для построения витрин и Grafana без дополнительных JOIN-ов.
+    columns:
+      - name: moment
+        description: "Дата и время операции"
+        tests: [not_null]
+      - name: item_id
+        description: "UUID позиции"
+      - name: slot_id
+        description: "UUID ячейки"
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: doc_name
+        description: "Номер документа"
+      - name: op_type
+        description: "Направление движения: in или out"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: uom
+        description: "Единица измерения"
+      - name: item_name
+        description: "Полное название позиции"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: article
+        description: "Артикул"
+      - name: weight
+        description: "Вес"
+      - name: volume
+        description: "Объём"
+      - name: barcodes
+        description: "Штрихкоды"
+      - name: client_name
+        description: "Название контрагента"
+      - name: client_inn
+        description: "ИНН контрагента"
+      - name: depositor
+        description: "Название поклажедателя"

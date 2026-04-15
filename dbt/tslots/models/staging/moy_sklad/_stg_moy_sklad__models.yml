@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: stg_agents
+  - name: stg_moy_sklad__agents
     description: "Контрагенты (поклажедатели и прочие агенты) из МойСклад"
     columns:
       - name: agent_id
@@ -12,7 +12,7 @@ models:
       - name: inn
       - name: updated
 
-  - name: stg_products
+  - name: stg_moy_sklad__products
     description: "Номенклатура (товары) из МойСклад"
     columns:
       - name: product_id
@@ -27,18 +27,18 @@ models:
         tests:
           - relationships:
               arguments:
-                to: ref('stg_uoms')
+                to: ref('stg_moy_sklad__uoms')
                 field: uom_id
       - name: depositor_id
         description: "UUID поклажедателя — атрибут 'Поклажедатель' из МойСклад"
         tests:
           - relationships:
               arguments:
-                to: ref('stg_agents')
+                to: ref('stg_moy_sklad__agents')
                 field: agent_id
       - name: updated
 
-  - name: stg_variants
+  - name: stg_moy_sklad__variants
     description: "Варианты товаров с характеристиками (партия, дата выработки)"
     columns:
       - name: variant_id
@@ -50,7 +50,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('stg_products')
+                to: ref('stg_moy_sklad__products')
                 field: product_id
       - name: lot
         description: "Партия — характеристика варианта"
@@ -59,7 +59,7 @@ models:
       - name: barcodes
       - name: updated
 
-  - name: stg_uoms
+  - name: stg_moy_sklad__uoms
     description: "Единицы измерения из МойСклад"
     columns:
       - name: uom_id
@@ -69,7 +69,7 @@ models:
         tests: [not_null]
       - name: updated
 
-  - name: stg_stores
+  - name: stg_moy_sklad__stores
     description: "Склады верхнего уровня из МойСклад"
     columns:
       - name: store_id
@@ -79,7 +79,7 @@ models:
         tests: [not_null]
       - name: updated
 
-  - name: stg_zones
+  - name: stg_moy_sklad__zones
     description: "Зоны хранения внутри склада"
     columns:
       - name: zone_id
@@ -91,13 +91,13 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('stg_stores')
+                to: ref('stg_moy_sklad__stores')
                 field: store_id
       - name: name
         tests: [not_null]
       - name: updated
 
-  - name: stg_slots
+  - name: stg_moy_sklad__slots
     description: "Ячейки хранения — минимальная адресная единица склада"
     columns:
       - name: slot_id
@@ -109,7 +109,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('stg_stores')
+                to: ref('stg_moy_sklad__stores')
                 field: store_id
       - name: zone_id
         description: "UUID зоны (опционально)"
@@ -117,7 +117,7 @@ models:
         tests: [not_null]
       - name: updated
 
-  - name: stg_operations
+  - name: stg_moy_sklad__operations
     description: "Все операционные документы в единой таблице позиций (demand, supply, loss, enter, move)"
     columns:
       - name: doc_id
@@ -129,7 +129,7 @@ models:
         tests:
           - relationships:
               arguments:
-                to: ref('stg_agents')
+                to: ref('stg_moy_sklad__agents')
                 field: agent_id
       - name: doc_type
         description: "Тип документа"
@@ -145,6 +145,9 @@ models:
               arguments:
                 values: ['in', 'out']
       - name: item_id
+        description: "UUID позиции (variant_id или product_id из МойСклад assortment)"
+        tests:
+          - not_null
       - name: quantity
         tests: [not_null]
       - name: slot_id
@@ -152,6 +155,6 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('stg_slots')
+                to: ref('stg_moy_sklad__slots')
                 field: slot_id
       - name: updated

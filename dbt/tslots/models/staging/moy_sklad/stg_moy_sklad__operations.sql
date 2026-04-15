@@ -1,4 +1,4 @@
--- stg_operations.sql — все операционные документы в единой таблице позиций.
+-- stg_moy_sklad__operations.sql — все операционные документы в единой таблице позиций.
 --
 -- Разворачивает сырые JSONB из 5 типов документов (demand, supply, loss, enter, move)
 -- в единую плоскую таблицу строк-позиций. Каждая строка = одна позиция документа.
@@ -68,7 +68,7 @@ with
             pos->'slot'->>'id'                                       as slot_id,
             l.raw_json->>'updated'                                   as doc_updated,
             'loss'                                                   as doc_type,
-            'in'                                                     as op_type
+            'out'                                                     as op_type
         from {{ source('moysklad', 'raw') }} l,
             jsonb_array_elements(
                 coalesce(l.raw_json->'positions'->'rows', '[]'::jsonb)

@@ -3,7 +3,6 @@
 # Определяет:
 #   - где искать модели, тесты, макросы
 #   - в какую схему PostgreSQL материализовать каждый слой
-#   - переменные проекта (тариф хранения)
 
 name: 'tslots'
 version: '1.0.0'
@@ -23,11 +22,8 @@ models:
       +materialized: table
       +schema: bronze
     intermediate:
-      # layer_gold: финальные витрины для Grafana — таблицы для быстрого чтения.
+      # layer_silver: промежуточные модели — денормализация, объединение источников.
       +materialized: table
       +schema: silver
-    marts:
-      # layer_gold: финальные витрины для Grafana — таблицы для быстрого чтения.
-      +materialized: table
-      +schema: gold
+    # marts: зарезервировано — моделей пока нет
 

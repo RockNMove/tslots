@@ -75,15 +75,14 @@ Docker volume grafana_data   →     /var/lib/grafana           (grafana)
      ▼  [1] ingest — Python/pandas → pg8000
 layer_raw.raw          ← одна таблица: entity + raw_json (JSONB)
      │
-     ▼  [2] dbt run staging
-layer_bronze.*         ← stg_stores, stg_zones, stg_slots, stg_uoms,
-     │                    stg_products, stg_variants, stg_agents, stg_operations
-     ▼  [3] dbt run intermediate
-layer.*                ← int_items, int_slots_extended
-     │
-     ▼  [4] dbt run marts
-layer_gold.*           ← mart_occupancy
-     │
+     ▼  [2] dbt run --select staging
+layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
+     │                    stg_moy_sklad__slots,  stg_moy_sklad__uoms,
+     │                    stg_moy_sklad__products, stg_moy_sklad__variants,
+     │                    stg_moy_sklad__agents,   stg_moy_sklad__operations
+     ▼  [3] dbt run --select intermediate
+layer_silver.*         ← int_items_union, int_slots_extended,
+     │                    int_ops_extended, int_occupancy
      ▼
 Grafana дашборды
 ```
@@ -113,31 +112,27 @@ Grafana дашборды
 
 | Модель | Источник в raw | Ключ | Описание |
 |---|---|---|---|
-| stg_stores | entity = 'store' | store_id | Склады |
-| stg_zones | entity = 'store' → zones.rows | zone_id | Зоны хранения |
-| stg_slots | entity = 'store' → slots.rows | slot_id | Ячейки хранения |
-| stg_uoms | entity = 'uom' | uom_id | Единицы измерения |
-| stg_products | entity = 'product' | product_id | Номенклатура |
-| stg_variants | entity = 'variant' | variant_id | Варианты (партия, дата) |
-| stg_agents | entity = 'counterparty' | agent_id | Контрагенты / поклажедатели |
-| stg_operations | entity = demand/supply/loss/enter/move | doc_id + product_id + op_type | Все операции единой таблицей |
+| stg_moy_sklad__stores | entity = 'store' | store_id | Склады |
+| stg_moy_sklad__zones | entity = 'store' → zones.rows | zone_id | Зоны хранения |
+| stg_moy_sklad__slots | entity = 'store' → slots.rows | slot_id | Ячейки хранения |
+| stg_moy_sklad__uoms | entity = 'uom' | uom_id | Единицы измерения |
+| stg_moy_sklad__products | entity = 'product' | product_id | Номенклатура |
+| stg_moy_sklad__variants | entity = 'variant' | variant_id | Варианты (партия, дата) |
+| stg_moy_sklad__agents | entity = 'counterparty' | agent_id | Контрагенты / поклажедатели |
+| stg_moy_sklad__operations | entity = demand/supply/loss/enter/move | doc_id + item_id + op_type | Все операции единой таблицей |
 
-Все модели — инкрементальные таблицы (MERGE по unique_key).
+Все модели — таблицы. `stg_moy_sklad__operations` — инкрементальная (MERGE по unique_key).
 
-### layer — intermediate
+### layer_silver — intermediate
 
 | Модель | Описание |
 |---|---|
-| int_items | Единый справочник позиций: варианты + товары без вариантов, с атрибутами |
+| int_items_union | Единый справочник позиций: варианты + товары без вариантов, с атрибутами |
 | int_slots_extended | Ячейки с денормализованными названиями склада и зоны |
+| int_ops_extended | Операции с денормализованными атрибутами позиций, ячеек и контрагентов |
+| int_occupancy | Ежедневная ведомость остатков по ячейкам: остаток, изменение, признак использования |
 
-Все модели — views.
-
-### layer_gold — marts
-
-| Модель | Описание |
-|---|---|
-| mart_occupancy | Ежедневная ведомость остатков по ячейкам: остаток, изменение, признак использования |
+Все модели — таблицы.
 
 ---
 
@@ -162,12 +157,15 @@ tslots/
 │
 ├── dbt/
 │   └── tslots/
-│       ├── dbt_project.yml    ← конфиг проекта, схемы слоёв, переменные
+│       ├── dbt_project.yml    ← конфиг проекта, схемы слоёв
 │       ├── profiles.yml       ← подключение к PostgreSQL
 │       └── models/
-│           ├── staging/       ← layer_bronze: stg_*
-│           ├── intermediate/  ← layer: int_*
-│           └── marts/         ← layer_gold: mart_*
+│           ├── staging/
+│           │   └── moy_sklad/ ← layer_bronze: stg_moy_sklad__*
+│           ├── intermediate/
+│           │   ├── flows/     ← layer_silver: int_items_union, int_slots_extended, int_ops_extended
+│           │   └── grid/      ← layer_silver: int_occupancy
+│           └── marts/         ← зарезервировано, пусто
 │
 ├── grafana/
 │   └── provisioning/
@@ -288,6 +286,11 @@ docker-compose down
 docker-compose down -v
 ```
 
+### Поднять весь проект
+```bash
+docker-compose up -d --build
+```
+
 ### Пересобрать worker после изменений
 ```bash
 docker-compose up -d --build prefect-worker
@@ -308,16 +311,6 @@ docker exec -it tslots-prefect-worker bash -c "
   dbt run --full-refresh --select stg_slots \
   --project-dir /app/dbt/tslots \
   --profiles-dir /app/dbt/tslots
-"
-```
-
-### Изменить тариф хранения
-```bash
-docker exec -it tslots-prefect-worker bash -c "
-  dbt run \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots \
-  --vars '{\"rate_per_slot_day\": 75}'
 "
 ```
 

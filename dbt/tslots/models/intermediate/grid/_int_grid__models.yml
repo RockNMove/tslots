@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_occupancy
+    description: >
+      Ежедневная ведомость остатков по ячейкам хранения.
+      Строится на сетке (date × slot) с нарастающим итогом через оконную функцию.
+      Каждая строка — один слот на один день.
+    columns:
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
+      - name: slot_name
+        description: "Название ячейки хранения"
+      - name: open_balance
+        description: "Остаток на начало дня (нарастающий итог до текущего дня)"
+        tests: [not_null]
+      - name: daily_change
+        description: "Изменение остатка за день (сумма всех операций по ячейке)"
+        tests: [not_null]
+      - name: is_used
+        description: "1 — ячейка занята, 0 — пустая, NULL — ошибка данных (отрицательный остаток)"
