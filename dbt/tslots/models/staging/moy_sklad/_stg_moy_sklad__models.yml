@@ -130,17 +130,13 @@ models:
               arguments:
                 to: ref('stg_moy_sklad__agents')
                 field: agent_id
+      - name: store_id
+        description: "UUID склада документа"
       - name: item_id
         tests: [not_null]
       - name: quantity
         tests: [not_null]
       - name: slot_id
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__slots')
-                field: slot_id
       - name: updated
       - name: doc_type
       - name: op_type
@@ -158,17 +154,13 @@ models:
       - name: moment
       - name: number
       - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
       - name: item_id
         tests: [not_null]
       - name: quantity
         tests: [not_null]
       - name: slot_id
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__slots')
-                field: slot_id
       - name: updated
       - name: doc_type
       - name: op_type
@@ -182,17 +174,13 @@ models:
       - name: moment
       - name: number
       - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
       - name: item_id
         tests: [not_null]
       - name: quantity
         tests: [not_null]
       - name: slot_id
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__slots')
-                field: slot_id
       - name: updated
       - name: doc_type
       - name: op_type
@@ -206,17 +194,13 @@ models:
       - name: moment
       - name: number
       - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
       - name: item_id
         tests: [not_null]
       - name: quantity
         tests: [not_null]
       - name: slot_id
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__slots')
-                field: slot_id
       - name: updated
       - name: doc_type
       - name: op_type

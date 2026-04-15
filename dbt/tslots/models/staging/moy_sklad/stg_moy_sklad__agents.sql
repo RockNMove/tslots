@@ -4,10 +4,12 @@ select
     raw_json->>'id'                                 as agent_id,
     raw_json->>'name'                               as name,
     raw_json->>'inn'                                as inn,
-    (raw_json->>'updated')::timestamptz             as updated
+    (raw_json->>'updated')::timestamp             as updated
 from {{ source('moysklad', 'raw') }}
 where entity = 'counterparty'
   and raw_json->>'id' is not null
+-- если выполняется
 {% if is_incremental() %}
-    and (raw_json->>'updated')::timestamptz > (select max(updated) from {{ this }})
+-- то приклеить к основному запросу это
+    and (raw_json->>'updated')::timestamp > (select max(updated) from {{ this }})
 {% endif %}

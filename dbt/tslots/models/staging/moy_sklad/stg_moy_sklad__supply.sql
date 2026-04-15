@@ -5,13 +5,14 @@
 
 SELECT
     s.raw_json->>'id'                                       AS doc_id,
-    (s.raw_json->>'moment')::timestamptz                    AS moment,
+    (s.raw_json->>'moment')::timestamp                    AS moment,
     s.raw_json->>'name'                                     AS number,
     s.raw_json->'agent'->>'id'                              AS agent_id,
+    s.raw_json->'store'->>'id'                              AS store_id,
     pos->'assortment'->>'id'                                AS item_id,
     (pos->>'quantity')::numeric                             AS quantity,
     pos->'slot'->>'id'                                      AS slot_id,
-    (s.raw_json->>'updated')::timestamptz                   AS updated,
+    (s.raw_json->>'updated')::timestamp                   AS updated,
     'supply'::text                                          AS doc_type,
     'in'::text                                              AS op_type
 FROM {{ source('moysklad', 'raw') }} s,
@@ -19,8 +20,8 @@ FROM {{ source('moysklad', 'raw') }} s,
         coalesce(s.raw_json->'positions'->'rows', '[]'::jsonb)
     ) AS pos
 WHERE s.entity = 'supply'
-  AND pos->'slot'->>'id' IS NOT NULL
-  AND pos->'assortment'->>'id' IS NOT NULL
+-- если выполняется
 {% if is_incremental() %}
-  AND (s.raw_json->>'updated')::timestamptz > (SELECT MAX(updated) FROM {{ this }})
+-- то приклеить к основному запросу это
+  AND (s.raw_json->>'updated')::timestamp > (SELECT MAX(updated) FROM {{ this }})
 {% endif %}

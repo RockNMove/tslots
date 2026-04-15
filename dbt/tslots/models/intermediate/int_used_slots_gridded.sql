@@ -3,18 +3,21 @@ WITH
 	dates AS (
 	    SELECT 
 	    	generate_series(min(moment::date), max(moment::date), '1 day'::interval)::date AS moment_day
-	    FROM {{ ref('int_operations_united') }}
+	    FROM {{ ref('int_operations_extended') }}
 	),
 	slots AS (
-	    SELECT
-	    	DISTINCT slot_id
-	    FROM {{ ref('int_operations_united') }}
+	    SELECT DISTINCT 
+		slot_id
+		, slot_name
+	    FROM {{ ref('int_operations_extended') }}
+		WHERE slot_id IS NOT NULL
 	),
 	-- 2. Создаем "сетку": каждый слот на каждый день
 	grid AS (
 	    SELECT 
-		    moment_day
-		    , slot_id
+		    d.moment_day
+		    , s.slot_id
+			, s.slot_name
 	    FROM dates d
 	    CROSS JOIN slots s
 	),
@@ -23,15 +26,18 @@ WITH
 		SELECT 
 			moment::date
 			, slot_id
+			, slot_name
 			, sum(quantity) AS daily_change
-		FROM {{ ref('int_operations_united') }} so
-		GROUP BY moment::date, slot_id
+		FROM {{ ref('int_operations_extended') }}
+		WHERE slot_id IS NOT NULL
+		GROUP BY moment::date, slot_id, slot_name
 	),
-	-- 4. Соединяем сетку с изменениями и считаем нарастающий итог
+	-- 4. Вешаем на сетку ежедневные изменения и считаем нарастающий итог
 	history AS (
 		SELECT 
 		    g.moment_day
 		    , g.slot_id
+			, g.slot_name
 		    , COALESCE(SUM(da.daily_change) 
 		    	OVER (
 			    	PARTITION BY g.slot_id 
@@ -42,12 +48,12 @@ WITH
 		    , COALESCE(da.daily_change,0) AS daily_change
 		FROM grid g
 		LEFT JOIN daily_agg da ON g.moment_day = da.moment AND g.slot_id = da.slot_id
-		ORDER BY moment_day, slot_id
 	)
 -- Итоговая ведомость
 SELECT 
 	moment_day
-	, slt.name AS slot_name
+	, slot_id
+	, slot_name
 	, open_balance
 	, daily_change
 	, CASE 
@@ -60,4 +66,4 @@ SELECT
 		ELSE 1
 	END AS is_used
 FROM history
-LEFT JOIN {{ ref('stg_moy_sklad__slots') }} slt USING(slot_id)
+ORDER BY slot_id, moment_day

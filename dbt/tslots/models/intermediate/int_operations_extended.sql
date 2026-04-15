@@ -1,8 +1,12 @@
-SELECT 
+-- int_operations_extended.sql — операции с денормализованными атрибутами.
+-- store_name берётся из документа (через store_id), а не из ячейки —
+-- это позволяет корректно показывать склад даже когда ячейка не указана.
+
+SELECT
 	o.moment
 	, o.item_id
 	, o.slot_id
-	, se.store_name
+	, s.name AS store_name
 	, se.zone_name
 	, o.doc_type
 	, o.number AS doc_name
@@ -25,4 +29,5 @@ FROM {{ ref('int_operations_united') }} o
 LEFT JOIN {{ ref('int_slots_extended') }} se ON o.slot_id=se.slot_id
 LEFT JOIN {{ ref('int_items_united') }} i ON o.item_id=i.item_id
 LEFT JOIN {{ ref('stg_moy_sklad__agents') }} a ON o.agent_id=a.agent_id
+LEFT JOIN {{ ref('stg_moy_sklad__stores') }} s ON o.store_id=s.store_id
 ORDER BY o.item_id, o.slot_id, o.moment

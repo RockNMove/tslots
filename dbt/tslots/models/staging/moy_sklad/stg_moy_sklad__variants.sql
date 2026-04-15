@@ -12,11 +12,13 @@ select
         '$.characteristics[*] ? (@.name == "дата выработки").value'
     ) #>> '{}'                                                          as mfg_date,
     raw_json->'barcodes'                                                as barcodes,
-    (raw_json->>'updated')::timestamptz                                 as updated
+    (raw_json->>'updated')::timestamp                                 as updated
 from {{ source('moysklad', 'raw') }}
 where entity = 'variant'
   and raw_json->>'id' is not null
   and raw_json->'product'->>'id' is not null
+-- если выполняется
 {% if is_incremental() %}
-    and (raw_json->>'updated')::timestamptz > (select max(updated) from {{ this }})
+-- то приклеить к основному запросу это
+    and (raw_json->>'updated')::timestamp > (select max(updated) from {{ this }})
 {% endif %}

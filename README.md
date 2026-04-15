@@ -83,9 +83,9 @@ layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
      │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
      ▼  [3] dbt run --select intermediate
-layer_silver.*         ← int_operations,
-     │                    int_items_union, int_slots_extended,
-     │                    int_operations_extended, int_occupancy
+layer_silver.*         ← int_operations_united,
+     │                    int_items_united, int_slots_extended,
+     │                    int_operations_extended, int_used_slots_gridded
      ▼
 Grafana дашборды
 ```
@@ -132,13 +132,13 @@ Grafana дашборды
 
 ### layer_silver — intermediate
 
-| Модель | Папка | Описание |
-|---|---|---|
-| int_operations | general | Единая таблица операций: UNION ALL из 5 staging-таблиц |
-| int_items_union | flows | Единый справочник позиций: варианты + товары без вариантов |
-| int_slots_extended | flows | Ячейки с денормализованными названиями склада и зоны |
-| int_operations_extended | flows | Операции с денормализованными атрибутами позиций и контрагентов |
-| int_occupancy | grid | Ежедневная ведомость остатков по ячейкам |
+| Модель | Описание |
+|---|---|
+| int_operations_united | Единая таблица операций: UNION ALL из 5 staging-таблиц |
+| int_items_united | Единый справочник позиций: варианты + товары без вариантов |
+| int_slots_extended | Ячейки с денормализованными названиями склада и зоны |
+| int_operations_extended | Операции с денормализованными атрибутами позиций, ячеек и контрагентов |
+| int_used_slots_gridded | Ежедневная ведомость остатков по ячейкам |
 
 Все модели — таблицы.
 
@@ -170,10 +170,8 @@ tslots/
 │       └── models/
 │           ├── staging/
 │           │   └── moy_sklad/   ← layer_bronze: stg_moy_sklad__*
-│           ├── intermediate/
-│           │   ├── general/     ← layer_silver: int_operations
-│           │   ├── flows/       ← layer_silver: int_items_union, int_slots_extended, int_operations_extended
-│           │   └── grid/        ← layer_silver: int_occupancy
+│           ├── intermediate/    ← layer_silver: int_operations_united, int_items_united,
+│           │                       int_slots_extended, int_operations_extended, int_used_slots_gridded
 │           └── marts/           ← зарезервировано, пусто
 │
 ├── grafana/
@@ -308,7 +306,7 @@ docker-compose up -d --build prefect-worker
 ### Запустить конкретную dbt модель
 ```bash
 docker exec -it tslots-prefect-worker bash -c "
-  dbt run --select stg_operations \
+  dbt run --select stg_moy_sklad__demand \
   --project-dir /app/dbt/tslots \
   --profiles-dir /app/dbt/tslots
 "
@@ -317,7 +315,7 @@ docker exec -it tslots-prefect-worker bash -c "
 ### Пересобрать модель с нуля (--full-refresh)
 ```bash
 docker exec -it tslots-prefect-worker bash -c "
-  dbt run --full-refresh --select stg_slots \
+  dbt run --full-refresh --select stg_moy_sklad__slots \
   --project-dir /app/dbt/tslots \
   --profiles-dir /app/dbt/tslots
 "

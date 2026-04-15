@@ -10,13 +10,14 @@ WITH
 move_out AS (
     SELECT
         m.raw_json->>'id'                                   AS doc_id,
-        (m.raw_json->>'moment')::timestamptz                AS moment,
+        (m.raw_json->>'moment')::timestamp                AS moment,
         m.raw_json->>'name'                                 AS number,
         NULL::text                                          AS agent_id,
+        m.raw_json->'sourceStore'->>'id'                              AS store_id,
         pos->'assortment'->>'id'                            AS item_id,
         (pos->>'quantity')::numeric * -1                    AS quantity,
         pos->'sourceSlot'->>'id'                            AS slot_id,
-        (m.raw_json->>'updated')::timestamptz               AS updated,
+        (m.raw_json->>'updated')::timestamp               AS updated,
         'move'::text                                        AS doc_type,
         'out'::text                                         AS op_type
     FROM {{ source('moysklad', 'raw') }} m,
@@ -24,23 +25,24 @@ move_out AS (
             coalesce(m.raw_json->'positions'->'rows', '[]'::jsonb)
         ) AS pos
     WHERE m.entity = 'move'
-      AND pos->'sourceSlot'->>'id' IS NOT NULL
-      AND pos->'assortment'->>'id' IS NOT NULL
+    -- если выполняется
     {% if is_incremental() %}
-      AND (m.raw_json->>'updated')::timestamptz > (SELECT MAX(updated) FROM {{ this }})
+    -- то приклеить к основному запросу это
+      AND (m.raw_json->>'updated')::timestamp > (SELECT MAX(updated) FROM {{ this }})
     {% endif %}
 ),
 
 move_in AS (
     SELECT
         m.raw_json->>'id'                                   AS doc_id,
-        (m.raw_json->>'moment')::timestamptz                AS moment,
+        (m.raw_json->>'moment')::timestamp                AS moment,
         m.raw_json->>'name'                                 AS number,
         NULL::text                                          AS agent_id,
+        m.raw_json->'targetStore'->>'id'                              AS store_id,
         pos->'assortment'->>'id'                            AS item_id,
         (pos->>'quantity')::numeric                         AS quantity,
         pos->'targetSlot'->>'id'                            AS slot_id,
-        (m.raw_json->>'updated')::timestamptz               AS updated,
+        (m.raw_json->>'updated')::timestamp               AS updated,
         'move'::text                                        AS doc_type,
         'in'::text                                          AS op_type
     FROM {{ source('moysklad', 'raw') }} m,
@@ -48,10 +50,10 @@ move_in AS (
             coalesce(m.raw_json->'positions'->'rows', '[]'::jsonb)
         ) AS pos
     WHERE m.entity = 'move'
-      AND pos->'targetSlot'->>'id' IS NOT NULL
-      AND pos->'assortment'->>'id' IS NOT NULL
+    -- если выполняется
     {% if is_incremental() %}
-      AND (m.raw_json->>'updated')::timestamptz > (SELECT MAX(updated) FROM {{ this }})
+    -- то приклеить к основному запросу это
+      AND (m.raw_json->>'updated')::timestamp > (SELECT MAX(updated) FROM {{ this }})
     {% endif %}
 )
 

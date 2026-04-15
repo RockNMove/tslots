@@ -5,12 +5,14 @@ select
     raw_json->>'id'                             as store_id,
     slot->'zone'->>'id'                         as zone_id,
     slot->>'name'                               as name,
-    (slot->>'updated')::timestamptz             as updated
+    (slot->>'updated')::timestamp             as updated
 from {{ source('moysklad', 'raw') }},
      jsonb_array_elements(
          coalesce(raw_json->'slots'->'rows', '[]'::jsonb)
      ) as slot
 where entity = 'store'
+-- если выполняется
 {% if is_incremental() %}
-    and (slot->>'updated')::timestamptz > (select max(updated) from {{ this }})
+-- то приклеить к основному запросу это
+    and (slot->>'updated')::timestamp > (select max(updated) from {{ this }})
 {% endif %}

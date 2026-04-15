@@ -6,8 +6,10 @@ with stores as (
         raw_json
     from {{ source('moysklad', 'raw') }}
     where entity = 'store'
+    -- если выполняется
     {% if is_incremental() %}
-        and (raw_json->>'updated')::timestamptz > (select max(updated) from {{ this }})
+    -- то приклеить к основному запросу это
+        and (raw_json->>'updated')::timestamp > (select max(updated) from {{ this }})
     {% endif %}
 )
 
@@ -15,7 +17,7 @@ select
     zone->>'id'                                 as zone_id,
     s.store_id,
     zone->>'name'                               as name,
-    (zone->>'updated')::timestamptz             as updated
+    (zone->>'updated')::timestamp             as updated
 from stores s,
      jsonb_array_elements(
          coalesce(s.raw_json->'zones'->'rows', '[]'::jsonb)
