@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: int_operations_united
+    description: >
+      Единая таблица позиций по всем типам операционных документов.
+      Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
+      Используется как основа для int_operations_extended и int_used_slots_gridded.
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: moment
+        description: "Дата и время документа"
+        tests: [not_null]
+      - name: number
+        description: "Номер документа"
+      - name: agent_id
+        description: "UUID контрагента (NULL для move, loss, enter)"
+      - name: item_id
+        description: "UUID позиции (variant_id или product_id)"
+        tests: [not_null]
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+        tests: [not_null]
+      - name: slot_id
+        description: "UUID ячейки хранения"
+        tests: [not_null]
+      - name: updated
+        description: "Время последнего изменения документа"
+        tests: [not_null]
+      - name: doc_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['demand', 'supply', 'loss', 'enter', 'move']
+      - name: op_type
+        description: "Направление: in (приход) или out (расход)"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['in', 'out']

@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: int_items_union
+  - name: int_items_united
     description: >
       Единый справочник позиций (товаров и вариантов).
       В МойСклад операции могут ссылаться как на product, так и на variant —
@@ -53,7 +53,7 @@ models:
       - name: updated
         description: "Время последнего обновления ячейки"
 
-  - name: int_ops_extended
+  - name: int_operations_extended
     description: >
       Операции с денормализованными атрибутами позиций, ячеек и контрагентов.
       Готовая таблица фактов для построения витрин и Grafana без дополнительных JOIN-ов.

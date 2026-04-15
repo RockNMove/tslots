@@ -117,11 +117,10 @@ models:
         tests: [not_null]
       - name: updated
 
-  - name: stg_moy_sklad__operations
-    description: "Все операционные документы в единой таблице позиций (demand, supply, loss, enter, move)"
-    columns:
+  - name: stg_moy_sklad__demand
+    description: "Позиции документов «Реализация» (отгрузки клиентам)"
+    columns: &op_columns
       - name: doc_id
-        description: "UUID документа"
         tests: [not_null]
       - name: moment
       - name: number
@@ -131,23 +130,8 @@ models:
               arguments:
                 to: ref('stg_moy_sklad__agents')
                 field: agent_id
-      - name: doc_type
-        description: "Тип документа"
-        tests:
-          - accepted_values:
-              arguments:
-                values: ['demand', 'supply', 'loss', 'enter', 'move']
-      - name: op_type
-        description: "Направление движения товара: in (приход) или out (расход)"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['in', 'out']
       - name: item_id
-        description: "UUID позиции (variant_id или product_id из МойСклад assortment)"
-        tests:
-          - not_null
+        tests: [not_null]
       - name: quantity
         tests: [not_null]
       - name: slot_id
@@ -158,3 +142,86 @@ models:
                 to: ref('stg_moy_sklad__slots')
                 field: slot_id
       - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__supply
+    description: "Позиции документов «Приёмка» (поступления от поставщиков)"
+    columns: *op_columns
+
+  - name: stg_moy_sklad__loss
+    description: "Позиции документов «Списание»"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_moy_sklad__slots')
+                field: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__enter
+    description: "Позиции документов «Оприходование»"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_moy_sklad__slots')
+                field: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__move
+    description: "Позиции документов «Перемещение». Каждая позиция — две строки: out (sourceSlot) и in (targetSlot)"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_moy_sklad__slots')
+                field: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['in', 'out']

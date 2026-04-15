@@ -12,10 +12,9 @@ api_to_gold.py — единственный flow проекта tslots.
 
 import os
 import subprocess
-
 import pandas as pd
 import requests
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
 from prefect import flow, task, get_run_logger
 
@@ -38,6 +37,24 @@ DBT_PROJECT_DIR = "/app/dbt/tslots"
 DBT_PROFILES_DIR = "/app/dbt/tslots"
 
 # HELPERS
+
+
+def get_max_updated(table: str) -> str | None:
+    """
+    Возвращает MAX(updated) из bronze-таблицы в виде строки 'YYYY-MM-DD HH:MM:SS.mmm'.
+    Миллисекунды важны: без них запись с .490 проходит фильтр updated>HH:MM:SS каждый раз.
+    Возвращает None если таблица не существует, пуста или поле updated отсутствует.
+    """
+    try:
+        with ENGINE.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT MAX(updated) FROM layer_bronze.{table}")
+            ).fetchone()
+        if row and row[0] is not None:
+            return row[0].replace(tzinfo=None).isoformat(sep=' ', timespec='milliseconds')
+        return None
+    except Exception:
+        return None
 
 
 def fetch(endpoint: str, params: dict) -> list[dict]:
@@ -65,25 +82,39 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
 def ingest():
     logger = get_run_logger()
 
+    # params     — параметры API-запроса
+    # aim_table  — bronze-таблица для чтения max(updated) и инкрементальной фильтрации
     endpoints = {
-        "store":        {"expand": "zones,slots.zone",                          "limit": LIMIT},
-        "uom":          {"limit": LIMIT},
-        "product":      {"expand": "uom,attributes.value",                      "limit": LIMIT},
-        "variant":      {"expand": "product",                                   "limit": LIMIT},
-        "counterparty": {"limit": LIMIT},
-        "demand":       {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
-        "supply":       {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
-        "loss":         {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
-        "enter":        {"expand": "positions.slot,positions.assortment,agent", "filter": "applicable=true", "limit": LIMIT},
-        "move":         {"expand": "positions.targetSlot,positions.sourceSlot,positions.assortment", "filter": "applicable=true", "limit": LIMIT},
+        "store":        {"params": {"expand": "zones,slots.zone",                                               "limit": LIMIT}, "aim_table": "stg_moy_sklad__stores"},
+        "uom":          {"params": {                                                                            "limit": LIMIT}, "aim_table": "stg_moy_sklad__uoms"},
+        "product":      {"params": {"expand": "uom,attributes.value",                                          "limit": LIMIT}, "aim_table": "stg_moy_sklad__products"},
+        "variant":      {"params": {"expand": "product",                                                       "limit": LIMIT}, "aim_table": "stg_moy_sklad__variants"},
+        "counterparty": {"params": {                                                                            "limit": LIMIT}, "aim_table": "stg_moy_sklad__agents"},
+        "demand":       {"params": {"expand": "positions.slot,positions.assortment,agent",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__demand"},
+        "supply":       {"params": {"expand": "positions.slot,positions.assortment,agent",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__supply"},
+        "loss":         {"params": {"expand": "positions.slot,positions.assortment,agent",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__loss"},
+        "enter":        {"params": {"expand": "positions.slot,positions.assortment,agent",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__enter"},
+        "move":         {"params": {"expand": "positions.targetSlot,positions.sourceSlot,positions.assortment","filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__move"},
     }
 
     records = []
-    for endpoint, params in endpoints.items():
+    for endpoint, cfg in endpoints.items():
+        params = dict(cfg["params"])
+
+        # Инкрементальная фильтрация: строгий > чтобы не перезагружать граничную запись.
+        # Запись с updated = max_updated уже загружена в прошлом запуске и есть в bronze.
+        since = get_max_updated(cfg["aim_table"])
+        if since:
+            existing = params.get("filter", "")
+            params["filter"] = f"{existing};updated>{since}" if existing else f"updated>{since}"
+            logger.info(f"{endpoint}: инкрементально с {since}")
+        else:
+            logger.info(f"{endpoint}: полная загрузка")
+
         rows = fetch(endpoint, params)
         for row in rows:
             records.append({"entity": endpoint, "raw_json": row})
-        logger.info(f"{endpoint}: {len(rows)}")
+        logger.info(f"{endpoint}: {len(rows)} записей")
 
     if not records:
         logger.warning("Нет данных от API — пропускаем запись в БД")

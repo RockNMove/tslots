@@ -79,10 +79,13 @@ layer_raw.raw          ← одна таблица: entity + raw_json (JSONB)
 layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__slots,  stg_moy_sklad__uoms,
      │                    stg_moy_sklad__products, stg_moy_sklad__variants,
-     │                    stg_moy_sklad__agents,   stg_moy_sklad__operations
+     │                    stg_moy_sklad__agents,
+     │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
+     │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
      ▼  [3] dbt run --select intermediate
-layer_silver.*         ← int_items_union, int_slots_extended,
-     │                    int_ops_extended, int_occupancy
+layer_silver.*         ← int_operations,
+     │                    int_items_union, int_slots_extended,
+     │                    int_operations_extended, int_occupancy
      ▼
 Grafana дашборды
 ```
@@ -119,18 +122,23 @@ Grafana дашборды
 | stg_moy_sklad__products | entity = 'product' | product_id | Номенклатура |
 | stg_moy_sklad__variants | entity = 'variant' | variant_id | Варианты (партия, дата) |
 | stg_moy_sklad__agents | entity = 'counterparty' | agent_id | Контрагенты / поклажедатели |
-| stg_moy_sklad__operations | entity = demand/supply/loss/enter/move | doc_id + item_id + op_type | Все операции единой таблицей |
+| stg_moy_sklad__demand | entity = 'demand' | doc_id + item_id + op_type | Реализации (расход) |
+| stg_moy_sklad__supply | entity = 'supply' | doc_id + item_id + op_type | Приёмки (приход) |
+| stg_moy_sklad__loss | entity = 'loss' | doc_id + item_id + op_type | Списания (расход) |
+| stg_moy_sklad__enter | entity = 'enter' | doc_id + item_id + op_type | Оприходования (приход) |
+| stg_moy_sklad__move | entity = 'move' | doc_id + item_id + op_type | Перемещения (две строки на позицию: out + in) |
 
-Все модели — таблицы. `stg_moy_sklad__operations` — инкрементальная (MERGE по unique_key).
+Все операционные модели — инкрементальные (MERGE по unique_key). Остальные — таблицы.
 
 ### layer_silver — intermediate
 
-| Модель | Описание |
-|---|---|
-| int_items_union | Единый справочник позиций: варианты + товары без вариантов, с атрибутами |
-| int_slots_extended | Ячейки с денормализованными названиями склада и зоны |
-| int_ops_extended | Операции с денормализованными атрибутами позиций, ячеек и контрагентов |
-| int_occupancy | Ежедневная ведомость остатков по ячейкам: остаток, изменение, признак использования |
+| Модель | Папка | Описание |
+|---|---|---|
+| int_operations | general | Единая таблица операций: UNION ALL из 5 staging-таблиц |
+| int_items_union | flows | Единый справочник позиций: варианты + товары без вариантов |
+| int_slots_extended | flows | Ячейки с денормализованными названиями склада и зоны |
+| int_operations_extended | flows | Операции с денормализованными атрибутами позиций и контрагентов |
+| int_occupancy | grid | Ежедневная ведомость остатков по ячейкам |
 
 Все модели — таблицы.
 
@@ -161,11 +169,12 @@ tslots/
 │       ├── profiles.yml       ← подключение к PostgreSQL
 │       └── models/
 │           ├── staging/
-│           │   └── moy_sklad/ ← layer_bronze: stg_moy_sklad__*
+│           │   └── moy_sklad/   ← layer_bronze: stg_moy_sklad__*
 │           ├── intermediate/
-│           │   ├── flows/     ← layer_silver: int_items_union, int_slots_extended, int_ops_extended
-│           │   └── grid/      ← layer_silver: int_occupancy
-│           └── marts/         ← зарезервировано, пусто
+│           │   ├── general/     ← layer_silver: int_operations
+│           │   ├── flows/       ← layer_silver: int_items_union, int_slots_extended, int_operations_extended
+│           │   └── grid/        ← layer_silver: int_occupancy
+│           └── marts/           ← зарезервировано, пусто
 │
 ├── grafana/
 │   └── provisioning/

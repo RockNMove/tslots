@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: int_occupancy
+  - name: int_used_slots_gridded
     description: >
       Ежедневная ведомость остатков по ячейкам хранения.
       Строится на сетке (date × slot) с нарастающим итогом через оконную функцию.

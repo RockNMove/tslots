@@ -21,8 +21,8 @@ SELECT
 	, a.name AS client_name
 	, a.inn AS client_inn
 	, i.depositor  
-FROM {{ ref('stg_moy_sklad__operations') }} o
+FROM {{ ref('int_operations_united') }} o
 LEFT JOIN {{ ref('int_slots_extended') }} se ON o.slot_id=se.slot_id
-LEFT JOIN {{ ref('int_items_union') }} i ON o.item_id=i.item_id
+LEFT JOIN {{ ref('int_items_united') }} i ON o.item_id=i.item_id
 LEFT JOIN {{ ref('stg_moy_sklad__agents') }} a ON o.agent_id=a.agent_id
 ORDER BY o.item_id, o.slot_id, o.moment
