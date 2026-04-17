@@ -1,10 +1,11 @@
 -- stg_moy_sklad__demand.sql — позиции документов «Реализация».
 -- Каждая строка = одна позиция документа. Товар уходит со склада (op_type = out).
 
-{{ config(materialized='incremental', unique_key=['doc_id', 'item_id', 'op_type'], incremental_strategy='merge') }}
+{{ config(materialized='incremental', unique_key=['doc_id', 'position_id', 'op_type'], incremental_strategy='merge') }}
 
 SELECT
     d.raw_json->>'id'                                       AS doc_id,
+    pos->>'id'                                              AS position_id,
     (d.raw_json->>'moment')::timestamp                    AS moment,
     d.raw_json->>'name'                                     AS number,
     d.raw_json->'agent'->>'id'                              AS agent_id,

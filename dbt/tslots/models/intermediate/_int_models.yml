@@ -6,10 +6,13 @@ models:
       Единая таблица позиций по всем типам операционных документов.
       Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
       Содержит store_id документа — используется в int_operations_extended для получения названия склада.
-      Используется как основа для int_operations_extended и int_used_slots_gridded.
+      Используется как основа для int_operations_extended.
     columns:
       - name: doc_id
         description: "UUID документа"
+        tests: [not_null]
+      - name: position_id
+        description: "UUID позиции документа из МойСклад — уникален внутри документа, используется как ключ MERGE"
         tests: [not_null]
       - name: moment
         description: "Дата и время документа"
@@ -45,19 +48,23 @@ models:
               arguments:
                 values: ['in', 'out']
 
-  - name: int_items_united
+  - name: int_items_united_extended
     description: >
-      Единый справочник позиций (товаров и вариантов).
+      Единый справочник позиций (товаров и вариантов) с денормализованными атрибутами.
       В МойСклад операции могут ссылаться как на product, так и на variant —
-      эта модель объединяет оба типа под общим item_id с денормализованными атрибутами.
+      эта модель объединяет оба типа под общим item_id.
+      Используется в int_operations_extended для обогащения операций атрибутами товаров.
     columns:
       - name: item_id
         description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
         tests: [not_null]
+      - name: depositor_id
+        description: "UUID поклажедателя (из атрибута товара)"
       - name: name
         description: "Полное название: для варианта — 'товар (партия, дата)', для товара — просто название"
         tests: [not_null]
       - name: updated
+        description: "Время последнего обновления записи"
         tests: [not_null]
       - name: product
         description: "Название родительского товара (NULL для строк-товаров без вариантов)"
@@ -76,8 +83,10 @@ models:
       - name: uom
         description: "Название единицы измерения"
         tests: [not_null]
-      - name: depositor
+      - name: depositor_name
         description: "Название поклажедателя (из атрибута товара)"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
 
   - name: int_slots_extended
     description: >
@@ -111,8 +120,12 @@ models:
         description: "UUID позиции"
       - name: slot_id
         description: "UUID ячейки"
+      - name: agent_id
+        description: "UUID контрагента"
+      - name: depositor_id
+        description: "UUID поклажедателя"
       - name: store_name
-        description: "Название склада"
+        description: "Название склада (из документа)"
       - name: zone_name
         description: "Название зоны"
       - name: doc_type
@@ -144,28 +157,51 @@ models:
       - name: barcodes
         description: "Штрихкоды"
       - name: client_name
-        description: "Название контрагента"
+        description: "Название контрагента (из документа)"
       - name: client_inn
         description: "ИНН контрагента"
-      - name: depositor
+      - name: depositor_name
         description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
 
-  - name: int_used_slots_gridded
+  - name: int_inventory_balance_history
     description: >
-      Ежедневная ведомость остатков по ячейкам хранения.
-      Строится на сетке (date × slot) с нарастающим итогом через оконную функцию.
-      Каждая строка — один слот на один день.
+      Ежедневная ведомость остатков в разрезе (слот, поклажедатель).
+      Строится на сетке (date × slot × depositor): только реальные комбинации, которые когда-либо взаимодействовали.
+      Учитывает дни без движений — товар продолжает занимать ячейку пока остаток > 0.
+      Раздельно считает реальные операции (real_in/out) и перемещения (move_in/out) —
+      это позволяет точно определить факт занятости ячейки в день перемещения.
     columns:
       - name: moment_day
         description: "Дата"
         tests: [not_null]
+      - name: slot_id
+        description: "UUID ячейки хранения"
+        tests: [not_null]
+      - name: depositor_id
+        description: "UUID поклажедателя"
+        tests: [not_null]
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
       - name: slot_name
-        description: "Название ячейки хранения"
+        description: "Название ячейки"
       - name: open_balance
-        description: "Остаток на начало дня (нарастающий итог до текущего дня)"
+        description: "Остаток на начало дня (до операций текущего дня)"
         tests: [not_null]
       - name: daily_change
-        description: "Изменение остатка за день (сумма всех операций по ячейке)"
+        description: "Изменение остатка за день (сумма всех операций поклажедателя по ячейке)"
         tests: [not_null]
-      - name: is_used
-        description: "1 — ячейка занята, 0 — пустая, NULL — ошибка данных (отрицательный остаток)"
+      - name: close_balance
+        description: "Остаток на конец дня (open_balance + daily_change)"
+        tests: [not_null]
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter) — без перемещений"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) — без перемещений"
+      - name: move_in
+        description: "Приход от перемещений (move in)"
+      - name: move_out
+        description: "Расход от перемещений (move out)"

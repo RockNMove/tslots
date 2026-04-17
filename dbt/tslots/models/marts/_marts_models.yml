@@ -1,0 +1,128 @@
+version: 2
+
+models:
+  - name: slots_balance
+    description: >
+      Витрина остатков товаров по ячейкам и поклажедателям.
+      Строится на основе int_inventory_balance_history: каждая строка — слот × поклажедатель × день.
+      Содержит нарастающие остатки (open/close) и разбивку оборота на реальные операции и перемещения.
+    columns:
+      - name: moment_day
+        description: "Дата"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: open_balance
+        description: "Остаток на начало дня"
+      - name: daily_change
+        description: "Изменение остатка за день (нетто всех операций)"
+      - name: close_balance
+        description: "Остаток на конец дня"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter) за день"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
+      - name: move_in
+        description: "Приход от перемещений (move in) за день"
+      - name: move_out
+        description: "Расход от перемещений (move out) за день — отрицательное число"
+      - name: is_used
+        description: "1 — ячейка занята, 0 — пустая, NULL — ошибка данных (отрицательный остаток)"
+
+  - name: slots_using
+    description: >
+      Минимальная витрина занятости ячеек хранения по дням.
+      Строится на основе int_inventory_balance_history.
+      Используется в Grafana для тепловых карт и графиков занятости.
+    columns:
+      - name: moment_day
+        description: "Дата"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: is_used
+        description: "1 — ячейка занята, 0 — пустая, NULL — ошибка данных (отрицательный остаток)"
+
+  - name: stock_movements
+    description: >
+      Витрина движений товаров с нарастающим остатком по каждому товару поклажедателя.
+      Строится на основе int_operations_extended. Перемещения (move) исключены — только реальный приход и расход.
+      open_balance / close_balance считаются оконной функцией в разрезе (depositor_id, item_id).
+    columns:
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: article
+        description: "Артикул товара"
+      - name: item_name
+        description: "Название позиции"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: doc_time
+        description: "Дата и время операции (moment)"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter)"
+      - name: doc_name
+        description: "Номер документа"
+      - name: open_balance
+        description: "Остаток товара до операции (нарастающий итог по depositor × item)"
+      - name: quantity
+        description: "Количество по операции (отрицательное для расхода)"
+      - name: close_balance
+        description: "Остаток товара после операции"
+
+  - name: stock_movements_location
+    description: >
+      Полная витрина всех движений товаров с привязкой к локации хранения.
+      Строится на основе int_operations_extended. Включает все типы операций, в том числе перемещения.
+      Содержит полный набор атрибутов: товар, партия, локация, контрагент, вес, объём, штрихкоды.
+    columns:
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: doc_time
+        description: "Дата и время операции (moment)"
+      - name: client_name
+        description: "Название контрагента по документу"
+      - name: client_inn
+        description: "ИНН контрагента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: doc_name
+        description: "Номер документа"
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны"
+      - name: op_type
+        description: "Направление: in / out"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: uom
+        description: "Единица измерения"
+      - name: item_name
+        description: "Название позиции"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: article
+        description: "Артикул"
+      - name: weight
+        description: "Вес"
+      - name: volume
+        description: "Объём"
+      - name: barcodes
+        description: "Штрихкоды (JSONB)"

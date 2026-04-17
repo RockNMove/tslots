@@ -25,5 +25,8 @@ models:
       # layer_silver: промежуточные модели — денормализация, объединение источников.
       +materialized: table
       +schema: silver
-    # marts: зарезервировано — моделей пока нет
+    marts:
+      # layer_gold: витрины
+      +materialized: table
+      +schema: gold
 

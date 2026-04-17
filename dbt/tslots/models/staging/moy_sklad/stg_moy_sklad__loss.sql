@@ -1,10 +1,11 @@
 -- stg_moy_sklad__loss.sql — позиции документов «Списание».
 -- Каждая строка = одна позиция документа. Товар убывает со склада (op_type = out).
 
-{{ config(materialized='incremental', unique_key=['doc_id', 'item_id', 'op_type'], incremental_strategy='merge') }}
+{{ config(materialized='incremental', unique_key=['doc_id', 'position_id', 'op_type'], incremental_strategy='merge') }}
 
 SELECT
     l.raw_json->>'id'                                       AS doc_id,
+    pos->>'id'                                              AS position_id,
     (l.raw_json->>'moment')::timestamp                    AS moment,
     l.raw_json->>'name'                                     AS number,
     coalesce(l.raw_json->'agent'->>'id', NULL)              AS agent_id,
