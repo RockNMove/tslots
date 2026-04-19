@@ -36,6 +36,8 @@ models:
               arguments:
                 to: ref('stg_moy_sklad__agents')
                 field: agent_id
+      - name: expected_bin_qty
+        description: "Кол-во единиц товара в одной ячейке — атрибут 'Кол-во в ячейке' из МойСклад"
       - name: updated
 
   - name: stg_moy_sklad__variants
@@ -121,6 +123,9 @@ models:
     description: "Позиции документов «Реализация» (отгрузки клиентам)"
     columns: &op_columns
       - name: doc_id
+        tests: [not_null]
+      - name: position_id
+        description: "UUID позиции документа из МойСклад — ключ MERGE (позволяет хранить один товар в нескольких строках)"
         tests: [not_null]
       - name: moment
       - name: number

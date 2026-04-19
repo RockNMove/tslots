@@ -1,12 +1,11 @@
 version: 2
 
 models:
-  - name: int_operations_united
+  - name: int_enrich__operations_united
     description: >
       Единая таблица позиций по всем типам операционных документов.
       Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
-      Содержит store_id документа — используется в int_operations_extended для получения названия склада.
-      Используется как основа для int_operations_extended.
+      Содержит store_id документа — используется в int_premart__operations_each для получения названия склада.
     columns:
       - name: doc_id
         description: "UUID документа"
@@ -48,18 +47,20 @@ models:
               arguments:
                 values: ['in', 'out']
 
-  - name: int_items_united_extended
+  - name: int_enrich__items_united_extended
     description: >
       Единый справочник позиций (товаров и вариантов) с денормализованными атрибутами.
       В МойСклад операции могут ссылаться как на product, так и на variant —
       эта модель объединяет оба типа под общим item_id.
-      Используется в int_operations_extended для обогащения операций атрибутами товаров.
+      Используется в int_premart__operations_each для обогащения операций атрибутами товаров.
     columns:
       - name: item_id
         description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
         tests: [not_null]
       - name: depositor_id
         description: "UUID поклажедателя (из атрибута товара)"
+      - name: expected_bin_qty
+        description: "Кол-во единиц товара в одной ячейке (атрибут из МойСклад)"
       - name: name
         description: "Полное название: для варианта — 'товар (партия, дата)', для товара — просто название"
         tests: [not_null]
@@ -84,11 +85,11 @@ models:
         description: "Название единицы измерения"
         tests: [not_null]
       - name: depositor_name
-        description: "Название поклажедателя (из атрибута товара)"
+        description: "Название поклажедателя"
       - name: depositor_inn
         description: "ИНН поклажедателя"
 
-  - name: int_slots_extended
+  - name: int_enrich__slots_extended
     description: >
       Справочник ячеек с денормализованными названиями склада и зоны.
       Используется в витринах и Grafana вместо JOIN-ов к stg_slots + stg_zones + stg_stores.
@@ -106,38 +107,53 @@ models:
       - name: updated
         description: "Время последнего обновления ячейки"
 
-  - name: int_operations_extended
+  - name: int_premart__operations_each
     description: >
-      Операции с денормализованными атрибутами позиций, ячеек и контрагентов.
-      store_name берётся напрямую из документа (JOIN со stg_moy_sklad__stores по store_id),
-      а не через ячейку — корректно работает когда ячейка не указана.
-      Готовая таблица фактов для построения витрин и Grafana без дополнительных JOIN-ов.
+      Операции с денормализованными атрибутами позиций, ячеек, контрагентов и нарастающими остатками.
+      INNER JOIN на int_enrich__items_united_extended отфильтровывает услуги, наборы и прочие сущности МойСклад.
+      store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
+      open/close_slot_balance учитывают только строки с slot_id IS NOT NULL (операции без ячейки не меняют slot_balance).
+      Содержит два вида нарастающих остатков: по товару в целом и по конкретной ячейке.
     columns:
-      - name: moment
-        description: "Дата и время операции"
-        tests: [not_null]
       - name: item_id
         description: "UUID позиции"
       - name: slot_id
         description: "UUID ячейки"
+      - name: store_id
+        description: "UUID склада (из документа)"
       - name: agent_id
         description: "UUID контрагента"
       - name: depositor_id
         description: "UUID поклажедателя"
+      - name: expected_bin_qty
+        description: "Кол-во единиц товара в одной ячейке"
       - name: store_name
-        description: "Название склада (из документа)"
+        description: "Название склада (из документа, не из ячейки)"
       - name: zone_name
         description: "Название зоны"
       - name: doc_type
         description: "Тип документа (demand, supply, loss, enter, move)"
       - name: doc_name
         description: "Номер документа"
+      - name: moment
+        description: "Дата и время операции"
+        tests: [not_null]
+      - name: moment_day
+        description: "Дата операции (moment::date)"
       - name: op_type
         description: "Направление движения: in или out"
       - name: slot_name
         description: "Название ячейки"
+      - name: open_total_balance
+        description: "Остаток товара по всем складам до операции (PARTITION BY item_id, move не учитывается)"
       - name: quantity
-        description: "Количество (отрицательное для расхода)"
+        description: "Количество по операции (отрицательное для расхода)"
+      - name: close_total_balance
+        description: "Остаток товара по всем складам после операции"
+      - name: open_slot_balance
+        description: "Остаток товара в конкретной ячейке до операции (PARTITION BY item_id, slot_id, store_id)"
+      - name: close_slot_balance
+        description: "Остаток товара в конкретной ячейке после операции"
       - name: uom
         description: "Единица измерения"
       - name: item_name
@@ -156,52 +172,74 @@ models:
         description: "Объём"
       - name: barcodes
         description: "Штрихкоды"
-      - name: client_name
+      - name: agent_name
         description: "Название контрагента (из документа)"
-      - name: client_inn
+      - name: agent_inn
         description: "ИНН контрагента"
       - name: depositor_name
         description: "Название поклажедателя"
       - name: depositor_inn
         description: "ИНН поклажедателя"
+      - name: items_in_slot
+        description: "Кол-во различных товаров в ячейке на дату операции (PARTITION BY item_id, moment_day, slot_id)"
 
-  - name: int_inventory_balance_history
+  - name: int_premart__slots_balance_daily_grid
     description: >
-      Ежедневная ведомость остатков в разрезе (слот, поклажедатель).
-      Строится на сетке (date × slot × depositor): только реальные комбинации, которые когда-либо взаимодействовали.
-      Учитывает дни без движений — товар продолжает занимать ячейку пока остаток > 0.
-      Раздельно считает реальные операции (real_in/out) и перемещения (move_in/out) —
-      это позволяет точно определить факт занятости ячейки в день перемещения.
+      Ежедневная ведомость занятых ячеек в разрезе (слот × агент × товар).
+      Строится на сетке (date × slot × agent × item): seek_end = CURRENT_DATE, сетка всегда идёт до сегодня.
+      Финальный SELECT отдаёт только строки с is_used != 0 — пустые дни без движений отброшены.
+      Атрибуты агента, ячейки и товара денормализованы через JOIN в CTE history.
     columns:
+      - name: agent_id
+        description: "UUID агента (контрагента по документу); NULL для loss, enter"
+      - name: depositor_id
+        description: "UUID поклажедателя"
+      - name: agent_inn
+        description: "ИНН агента"
+      - name: agent_name
+        description: "Название агента"
+      - name: slot_id
+        description: "UUID ячейки хранения; NULL для операций без ячейки"
+      - name: item_id
+        description: "UUID товара/варианта"
+        tests: [not_null]
       - name: moment_day
         description: "Дата"
         tests: [not_null]
-      - name: slot_id
-        description: "UUID ячейки хранения"
-        tests: [not_null]
-      - name: depositor_id
-        description: "UUID поклажедателя"
-        tests: [not_null]
-      - name: depositor_name
-        description: "Название поклажедателя"
       - name: depositor_inn
         description: "ИНН поклажедателя"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны"
       - name: slot_name
         description: "Название ячейки"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
       - name: open_balance
-        description: "Остаток на начало дня (до операций текущего дня)"
+        description: "Остаток на начало дня"
         tests: [not_null]
-      - name: daily_change
-        description: "Изменение остатка за день (сумма всех операций поклажедателя по ячейке)"
+      - name: quantity
+        description: "Нетто изменение остатка за день (все операции)"
         tests: [not_null]
       - name: close_balance
-        description: "Остаток на конец дня (open_balance + daily_change)"
+        description: "Остаток на конец дня"
         tests: [not_null]
       - name: real_in
-        description: "Приход по реальным операциям (supply, enter) — без перемещений"
+        description: "Приход по реальным операциям (supply, enter) за день"
       - name: real_out
-        description: "Расход по реальным операциям (demand, loss) — без перемещений"
+        description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
       - name: move_in
-        description: "Приход от перемещений (move in)"
+        description: "Приход от перемещений (move in) за день"
       - name: move_out
-        description: "Расход от перемещений (move out)"
+        description: "Расход от перемещений (move out) за день — отрицательное число"

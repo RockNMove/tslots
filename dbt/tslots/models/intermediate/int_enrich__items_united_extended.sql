@@ -1,7 +1,7 @@
--- int_items_united_extended.sql — единый справочник позиций (товары и варианты).
+-- int_enrich__items_united_extended.sql — единый справочник позиций (товары и варианты).
 -- В МойСклад операции могут ссылаться как на product_id, так и на variant_id.
 -- Эта модель объединяет оба типа под общим item_id с денормализованными атрибутами:
--- uom, depositor, lot, mfg_date, barcodes — готово для JOIN в int_operations_extended.
+-- uom, depositor, lot, mfg_date, barcodes — готово для JOIN в int_premart__operations_each.
 
 -- Часть 1: варианты (товары с партией и датой выработки).
 -- item_id = variant_id. name собирается как "товар (партия, дата)" для читаемости.
@@ -9,6 +9,7 @@
 SELECT
 	variant_id AS item_id
 	, p.depositor_id
+	, p.expected_bin_qty
 	, CONCAT(p.name, ' (',v.lot,',',v.mfg_date,')') AS name
 	, v.updated
 	, p.name AS product
@@ -33,6 +34,7 @@ UNION ALL
 SELECT
 	product_id
 	, p.depositor_id
+	, p.expected_bin_qty
 	, p.name
 	, p.updated
 	, NULL  -- product (сам же и есть товар, нет родителя)

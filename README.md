@@ -83,13 +83,16 @@ layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
      │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
      ▼  [3] dbt run --select intermediate
-layer_silver.*         ← int_operations_united,
-     │                    int_items_united_extended, int_slots_extended,
-     │                    int_operations_extended,
-     │                    int_inventory_balance_history
+layer_silver.*         ← int_enrich__operations_united,
+     │                    int_enrich__items_united_extended, int_enrich__slots_extended,
+     │                    int_premart__operations_each,
+     │                    int_premart__slots_balance_daily_grid
      ▼  [4] dbt run --select marts
-layer_gold.*           ← slots_balance, slots_using,
-     │                    stock_movements, stock_movements_location
+layer_gold.*           ← warehouse: warehouse__slots_balance_clients_usage_days,
+     │                              warehouse__operations_results_clients_each,
+     │                              warehouse__items_in_slots_daily
+     │                    partners: partners__nrb_stock_movements_each
+     │                    focus:    focus__slots_used_monthly
      ▼
 Grafana дашборды
 ```
@@ -132,28 +135,29 @@ Grafana дашборды
 | stg_moy_sklad__enter | entity = 'enter' | doc_id + position_id + op_type | Оприходования (приход) |
 | stg_moy_sklad__move | entity = 'move' | doc_id + position_id + op_type | Перемещения (две строки на позицию: out + in) |
 
-Все операционные модели — инкрементальные (MERGE по unique_key). Ключ MERGE использует `position_id` (UUID позиции из МойСклад) — это позволяет корректно обрабатывать документы где один товар стоит в нескольких строках. Остальные модели — таблицы.
+Все операционные модели — инкрементальные (MERGE по unique_key). Ключ MERGE использует `position_id` (UUID позиции из МойСклад) — позволяет корректно обрабатывать документы где один товар стоит в нескольких строках. Остальные модели — таблицы.
 
 ### layer_silver — intermediate
 
 | Модель | Описание |
 |---|---|
-| int_operations_united | Единая таблица операций: UNION ALL из 5 staging-таблиц |
-| int_items_united_extended | Единый справочник позиций: варианты + товары без вариантов, с uom, lot, barcodes |
-| int_slots_extended | Ячейки с денормализованными названиями склада и зоны |
-| int_operations_extended | Операции с денормализованными атрибутами позиций, ячеек и контрагентов |
-| int_inventory_balance_history | Ежедневная ведомость остатков в разрезе слот × поклажедатель с раздельным учётом перемещений |
+| int_enrich__operations_united | Единая таблица операций: UNION ALL из 5 staging-таблиц |
+| int_enrich__items_united_extended | Единый справочник позиций: варианты + товары без вариантов, с uom, lot, expected_bin_qty, barcodes |
+| int_enrich__slots_extended | Ячейки с денормализованными названиями склада и зоны |
+| int_premart__operations_each | Операции с атрибутами позиций, ячеек, контрагентов. INNER JOIN отфильтровывает услуги и наборы |
+| int_premart__slots_balance_daily_grid | Ежедневная ведомость занятых ячеек (slot × agent × item × день). seek_end = CURRENT_DATE. Только строки с is_used != 0 |
 
 Все модели — таблицы.
 
 ### layer_gold — marts
 
-| Модель | Источник | Описание |
-|---|---|---|
-| slots_balance | int_inventory_balance_history | Остатки по ячейкам × поклажедатель × день: open/close/daily + real_in/out + move_in/out + is_used |
-| slots_using | int_inventory_balance_history | Занятость ячеек по дням (4 колонки для Grafana: slot_name, depositor_name, moment_day, is_used) |
-| stock_movements | int_operations_extended | Движения товаров без move, с нарастающим остатком (open/close) по depositor × item |
-| stock_movements_location | int_operations_extended | Все движения включая move, с полной атрибутикой: локация, партия, контрагент, вес, штрихкоды |
+| Папка | Модель | Источник | Описание |
+|---|---|---|---|
+| warehouse | warehouse__slots_balance_clients_usage_days | int_premart__slots_balance_daily_grid | Занятые ячейки по дням: остатки, real/move in/out по агенту и поклажедателю |
+| warehouse | warehouse__operations_results_clients_each | int_premart__operations_each | Все движения с open/close остатками total и по ячейке, диагностика slot_errors |
+| warehouse | warehouse__items_in_slots_daily | int_premart__slots_balance_daily_grid | Нарастающий остаток товара в ячейке по дням, только ненулевые строки |
+| partners | partners__nrb_stock_movements_each | int_premart__operations_each | Движения без move, с нарастающим остатком — для поклажедателей |
+| focus | focus__slots_used_monthly | int_premart__slots_balance_daily_grid | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
 
 Все модели — таблицы.
 
@@ -185,11 +189,15 @@ tslots/
 │       └── models/
 │           ├── staging/
 │           │   └── moy_sklad/   ← layer_bronze: stg_moy_sklad__*
-│           ├── intermediate/    ← layer_silver: int_operations_united, int_items_united_extended,
-│           │                       int_slots_extended, int_operations_extended,
-│           │                       int_inventory_balance_history
-│           └── marts/           ← layer_gold: slots_balance, slots_using,
-│                                    stock_movements, stock_movements_location
+│           ├── intermediate/    ← layer_silver: int_enrich__operations_united, int_enrich__items_united_extended,
+│           │                       int_enrich__slots_extended, int_premart__operations_each,
+│           │                       int_premart__slots_balance_daily_grid
+│           └── marts/
+│               ├── warehouse/   ← warehouse__slots_balance_clients_usage_days,
+│               │                   warehouse__operations_results_clients_each,
+│               │                   warehouse__items_in_slots_daily
+│               ├── partners/    ← partners__nrb_stock_movements_each
+│               └── focus/       ← focus__slots_used_monthly
 │
 ├── grafana/
 │   └── provisioning/

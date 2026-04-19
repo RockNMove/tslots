@@ -12,4 +12,3 @@ UNION ALL
 SELECT * FROM {{ ref('stg_moy_sklad__enter') }}
 UNION ALL
 SELECT * FROM {{ ref('stg_moy_sklad__move') }}
-ORDER BY moment, number

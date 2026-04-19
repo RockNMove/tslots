@@ -11,6 +11,10 @@ select
         raw_json,
         '$.attributes[*] ? (@.name == "Поклажедатель").value.id'
     ) #>> '{}'                                                          as depositor_id,
+    (jsonb_path_query_first(
+        raw_json,
+        '$.attributes[*] ? (@.name == "Кол-во в ячейке").value'
+    ) #>> '{}')::numeric                                                as expected_bin_qty,
     (raw_json->>'updated')::timestamp                                 as updated
 from {{ source('moysklad', 'raw') }}
 where entity = 'product'

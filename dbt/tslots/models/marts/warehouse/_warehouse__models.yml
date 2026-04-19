@@ -1,0 +1,134 @@
+version: 2
+
+models:
+  - name: warehouse__slots_balance_clients_usage_days
+    description: >
+      Витрина занятых ячеек по дням (слот × поклажедатель × товар × день).
+      Строится на основе int_premart__slots_balance_daily_grid: только строки с is_used != 0.
+      Содержит нарастающие остатки и разбивку оборота на реальные операции и перемещения.
+    columns:
+      - name: agent_name
+        description: "Название агента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: moment_day
+        description: "Дата"
+      - name: open_balance
+        description: "Остаток на начало дня"
+      - name: quantity
+        description: "Нетто изменение остатка за день"
+      - name: close_balance
+        description: "Остаток на конец дня"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter)"
+      - name: move_in
+        description: "Приход от перемещений"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) — отрицательное число"
+      - name: move_out
+        description: "Расход от перемещений — отрицательное число"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: agent_inn
+        description: "ИНН агента"
+      - name: zone_name
+        description: "Название зоны"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+
+  - name: warehouse__operations_results_clients_each
+    description: >
+      Полная витрина всех движений по складу с нарастающими остатками и диагностикой ячеек.
+      Строится на основе int_premart__operations_each. Включает все типы операций, в том числе move.
+      open/close_total_balance — остаток по товару в целом (PARTITION BY agent_id, item_id, move не учитывается).
+      open/close_slot_balance  — остаток в конкретной ячейке (PARTITION BY agent_id, item_id, slot_id).
+      slot_errors — текстовый флаг проблем: отрицательный остаток, несколько товаров в ячейке, неожиданный остаток.
+    columns:
+      - name: agent_name
+        description: "Название агента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Название позиции"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: doc_name
+        description: "Номер документа"
+      - name: moment_day
+        description: "Дата операции"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: op_type
+        description: "Направление: in / out"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+      - name: open_total_balance
+        description: "Остаток товара по всем складам до операции"
+      - name: close_total_balance
+        description: "Остаток товара по всем складам после операции"
+      - name: uom
+        description: "Единица измерения"
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке"
+      - name: items_in_slot
+        description: "Кол-во различных товаров в ячейке на дату операции"
+      - name: slot_errors
+        description: "Диагностика: ERROR slot overdraft / ERROR slot has > 1 items / WARNING unexpected slot balance / NULL"
+      - name: moment
+        description: "Дата и время операции"
+      - name: article
+        description: "Артикул"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: weight
+        description: "Вес"
+      - name: volume
+        description: "Объём"
+      - name: barcodes
+        description: "Штрихкоды (JSONB)"
+      - name: zone_name
+        description: "Название зоны"
+      - name: agent_inn
+        description: "ИНН агента"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+
+  - name: warehouse__items_in_slots_daily
+    description: >
+      Текущий остаток товаров в ячейках по дням.
+      Строится на основе int_premart__slots_balance_daily_grid: агрегирует quantity по (moment_day, slot_id, item_id),
+      затем считает нарастающий остаток (SUM OVER PARTITION BY item_name, slot_name).
+      Выводит только строки где balance != 0.
+    columns:
+      - name: store_name
+        description: "Название склада"
+      - name: moment_day
+        description: "Дата"
+      - name: item_name
+        description: "Название товара/варианта"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: balance
+        description: "Нарастающий остаток товара в ячейке на конец дня"
