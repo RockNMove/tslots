@@ -3,13 +3,15 @@ version: 2
 models:
   - name: focus__slots_used_monthly
     description: >
-      Агрегат занятости ячеек по месяцам в разрезе поклажедателей.
-      Строится на основе int_premart__slots_balance_daily_grid (только is_used != 0).
-      slots_used — кол-во уникальных ячейко-дней за месяц.
+      Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей.
+      Строится на основе int_premart__balance_daily_atomic_grid (только is_used != 0).
+      slots_used — кол-во уникальных ячеек занятых за месяц.
     columns:
+      - name: agent_name
+        description: "Название агента"
       - name: depositor_name
         description: "Название поклажедателя"
       - name: moment_month
         description: "Месяц в формате 'YYYY MONTH'"
       - name: slots_used
-        description: "Кол-во ячейко-дней занятости за месяц"
+        description: "Кол-во уникальных ячеек с ненулевым остатком за месяц (COUNT DISTINCT slot_id)"

@@ -31,19 +31,23 @@ WITH
 				),
 			0) AS close_slot_balance
 			, COALESCE(
-				SUM(CASE WHEN doc_type='move' THEN 0 ELSE quantity END) OVER(
+				SUM(real_in+real_out) OVER(
 					PARTITION BY agent_id, item_id
 					ORDER BY moment
 					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 				),
 			0) AS open_total_balance
 			, COALESCE(
-				SUM(CASE WHEN doc_type='move' THEN 0 ELSE quantity END) OVER(
+				SUM(real_in+real_out) OVER(
 					PARTITION BY agent_id, item_id
 					ORDER BY moment
 					ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 				),
 			0) AS close_total_balance
+			, real_in
+			, move_in
+			, real_out
+			, move_out
 			, uom
 			, expected_bin_qty
 			, items_in_slot
@@ -75,12 +79,16 @@ SELECT
 	, close_slot_balance
 	, open_total_balance
 	, close_total_balance
+	, real_in
+	, move_in
+	, real_out
+	, move_out
 	, uom
 	, expected_bin_qty
 	, items_in_slot
 	, CASE 
 		WHEN close_slot_balance<0 THEN 'ERROR: slot overdraft'
-		WHEN items_in_slot >1 THEN 'ERROR: slot has > 1 items' 
+		WHEN items_in_slot >1 THEN 'WARNING: slot has > 1 items'
 		WHEN close_slot_balance != expected_bin_qty THEN 'WARNING: unexpected slot balance'
 		ELSE NULL 
 	END AS slot_errors

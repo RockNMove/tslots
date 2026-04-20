@@ -22,6 +22,10 @@ SELECT
 	, o.op_type 
 	, se.name AS slot_name
 	, o.quantity
+	, CASE WHEN o.doc_type != 'move' AND o.quantity > 0 THEN o.quantity ELSE 0 END AS real_in
+	, CASE WHEN o.doc_type != 'move' AND o.quantity < 0 THEN o.quantity ELSE 0 END AS real_out
+	, CASE WHEN o.doc_type  = 'move' AND o.quantity > 0 THEN o.quantity ELSE 0 END AS move_in
+	, CASE WHEN o.doc_type  = 'move' AND o.quantity < 0 THEN o.quantity ELSE 0 END AS move_out
 	, i.uom
 	, i.name AS item_name
 	, i.product 

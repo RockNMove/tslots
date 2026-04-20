@@ -1,11 +1,12 @@
 version: 2
 
 models:
-  - name: warehouse__slots_balance_clients_usage_days
+  - name: warehouse__balance_daily_atomic_grid
     description: >
-      Витрина занятых ячеек по дням (слот × поклажедатель × товар × день).
-      Строится на основе int_premart__slots_balance_daily_grid: только строки с is_used != 0.
-      Содержит нарастающие остатки и разбивку оборота на реальные операции и перемещения.
+      Витрина занятых ячеек по дням (слот × агент × товар × день).
+      Строится на основе int_premart__balance_daily_atomic_grid (только строки с is_used != 0).
+      Содержит балансы по ячейке (slot) и суммарные по товару+агенту (total),
+      а также разбивку оборота на реальные операции и перемещения.
     columns:
       - name: agent_name
         description: "Название агента"
@@ -19,12 +20,16 @@ models:
         description: "Название ячейки"
       - name: moment_day
         description: "Дата"
-      - name: open_balance
-        description: "Остаток на начало дня"
+      - name: open_slot_balance
+        description: "Остаток в ячейке на начало дня"
       - name: quantity
         description: "Нетто изменение остатка за день"
-      - name: close_balance
-        description: "Остаток на конец дня"
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня"
+      - name: open_total_balance
+        description: "Остаток товара у агента по всем ячейкам на начало дня"
+      - name: close_total_balance
+        description: "Остаток товара у агента по всем ячейкам на конец дня"
       - name: real_in
         description: "Приход по реальным операциям (supply, enter)"
       - name: move_in
@@ -48,12 +53,12 @@ models:
       - name: mfg_date
         description: "Дата выработки"
 
-  - name: warehouse__operations_results_clients_each
+  - name: warehouse__operations_balance_atomic_each
     description: >
       Полная витрина всех движений по складу с нарастающими остатками и диагностикой ячеек.
       Строится на основе int_premart__operations_each. Включает все типы операций, в том числе move.
-      open/close_total_balance — остаток по товару в целом (PARTITION BY agent_id, item_id, move не учитывается).
       open/close_slot_balance  — остаток в конкретной ячейке (PARTITION BY agent_id, item_id, slot_id).
+      open/close_total_balance — остаток по товару+агенту в целом (PARTITION BY agent_id, item_id; move не учитывается).
       slot_errors — текстовый флаг проблем: отрицательный остаток, несколько товаров в ячейке, неожиданный остаток.
     columns:
       - name: agent_name
@@ -81,9 +86,9 @@ models:
       - name: close_slot_balance
         description: "Остаток в ячейке после операции"
       - name: open_total_balance
-        description: "Остаток товара по всем складам до операции"
+        description: "Остаток товара у агента по всем ячейкам до операции"
       - name: close_total_balance
-        description: "Остаток товара по всем складам после операции"
+        description: "Остаток товара у агента по всем ячейкам после операции"
       - name: uom
         description: "Единица измерения"
       - name: expected_bin_qty
@@ -91,7 +96,7 @@ models:
       - name: items_in_slot
         description: "Кол-во различных товаров в ячейке на дату операции"
       - name: slot_errors
-        description: "Диагностика: ERROR slot overdraft / ERROR slot has > 1 items / WARNING unexpected slot balance / NULL"
+        description: "Диагностика: ERROR slot overdraft / WARNING slot has > 1 items / WARNING unexpected slot balance / NULL"
       - name: moment
         description: "Дата и время операции"
       - name: article
@@ -117,10 +122,9 @@ models:
 
   - name: warehouse__items_in_slots_daily
     description: >
-      Текущий остаток товаров в ячейках по дням.
-      Строится на основе int_premart__slots_balance_daily_grid: агрегирует quantity по (moment_day, slot_id, item_id),
-      затем считает нарастающий остаток (SUM OVER PARTITION BY item_name, slot_name).
-      Выводит только строки где balance != 0.
+      Текущий остаток товаров в ячейках по дням (слот × товар × день).
+      Строится на основе int_premart__balance_daily_by_slot_grid.
+      Выводит только строки где close_slot_balance != 0.
     columns:
       - name: store_name
         description: "Название склада"
@@ -130,5 +134,5 @@ models:
         description: "Название товара/варианта"
       - name: slot_name
         description: "Название ячейки"
-      - name: balance
-        description: "Нарастающий остаток товара в ячейке на конец дня"
+      - name: close_slot_balance
+        description: "Остаток товара в ячейке на конец дня"

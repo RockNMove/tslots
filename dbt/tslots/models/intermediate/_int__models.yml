@@ -109,11 +109,11 @@ models:
 
   - name: int_premart__operations_each
     description: >
-      Операции с денормализованными атрибутами позиций, ячеек, контрагентов и нарастающими остатками.
+      Операции с денормализованными атрибутами позиций, ячеек и контрагентов.
       INNER JOIN на int_enrich__items_united_extended отфильтровывает услуги, наборы и прочие сущности МойСклад.
       store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
-      open/close_slot_balance учитывают только строки с slot_id IS NOT NULL (операции без ячейки не меняют slot_balance).
-      Содержит два вида нарастающих остатков: по товару в целом и по конкретной ячейке.
+      Содержит разбивку quantity на real_in/real_out (supply/enter/demand/loss) и move_in/move_out (перемещения).
+      items_in_slot — кол-во различных товаров в ячейке на дату операции.
     columns:
       - name: item_id
         description: "UUID позиции"
@@ -144,16 +144,16 @@ models:
         description: "Направление движения: in или out"
       - name: slot_name
         description: "Название ячейки"
-      - name: open_total_balance
-        description: "Остаток товара по всем складам до операции (PARTITION BY item_id, move не учитывается)"
       - name: quantity
         description: "Количество по операции (отрицательное для расхода)"
-      - name: close_total_balance
-        description: "Остаток товара по всем складам после операции"
-      - name: open_slot_balance
-        description: "Остаток товара в конкретной ячейке до операции (PARTITION BY item_id, slot_id, store_id)"
-      - name: close_slot_balance
-        description: "Остаток товара в конкретной ячейке после операции"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter): quantity если doc_type != move и quantity > 0, иначе 0"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss): quantity если doc_type != move и quantity < 0, иначе 0"
+      - name: move_in
+        description: "Приход от перемещений: quantity если doc_type = move и quantity > 0, иначе 0"
+      - name: move_out
+        description: "Расход от перемещений: quantity если doc_type = move и quantity < 0, иначе 0"
       - name: uom
         description: "Единица измерения"
       - name: item_name
@@ -183,33 +183,31 @@ models:
       - name: items_in_slot
         description: "Кол-во различных товаров в ячейке на дату операции (PARTITION BY item_id, moment_day, slot_id)"
 
-  - name: int_premart__slots_balance_daily_grid
+  - name: int_premart__balance_daily_atomic_grid
     description: >
-      Ежедневная ведомость занятых ячеек в разрезе (слот × агент × товар).
-      Строится на сетке (date × slot × agent × item): seek_end = CURRENT_DATE, сетка всегда идёт до сегодня.
-      Финальный SELECT отдаёт только строки с is_used != 0 — пустые дни без движений отброшены.
-      Атрибуты агента, ячейки и товара денормализованы через JOIN в CTE history.
+      Атомарная ежедневная сетка: слот × агент × товар × день.
+      Строит непрерывный ряд дат по каждой тройке зерна (agent, slot, item) от первой операции до сегодня.
+      Считает нарастающие балансы (slot и total) и флаг занятости is_used.
+      Финальный SELECT отдаёт только строки с is_used != 0 — дни без движений с нулевым остатком отброшены.
+      is_used: 1 — занято, 2 — ошибка данных (close_slot_balance < 0).
+      Обогащение атрибутами (агенты, ячейки, товары) — последний шаг, только на отфильтрованных строках.
     columns:
       - name: agent_id
-        description: "UUID агента (контрагента по документу); NULL для loss, enter"
+        description: "UUID агента"
+      - name: slot_id
+        description: "UUID ячейки"
+      - name: item_id
+        description: "UUID товара/варианта"
+        tests: [not_null]
       - name: depositor_id
         description: "UUID поклажедателя"
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
       - name: agent_inn
         description: "ИНН агента"
       - name: agent_name
         description: "Название агента"
-      - name: slot_id
-        description: "UUID ячейки хранения; NULL для операций без ячейки"
-      - name: item_id
-        description: "UUID товара/варианта"
-        tests: [not_null]
-      - name: moment_day
-        description: "Дата"
-        tests: [not_null]
-      - name: depositor_inn
-        description: "ИНН поклажедателя"
-      - name: depositor_name
-        description: "Название поклажедателя"
       - name: store_name
         description: "Название склада"
       - name: zone_name
@@ -218,6 +216,10 @@ models:
         description: "Название ячейки"
       - name: item_name
         description: "Полное название товара/варианта"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: depositor_name
+        description: "Название поклажедателя"
       - name: article
         description: "Артикул товара"
       - name: product
@@ -226,20 +228,69 @@ models:
         description: "Партия"
       - name: mfg_date
         description: "Дата выработки"
-      - name: open_balance
-        description: "Остаток на начало дня"
+      - name: open_slot_balance
+        description: "Остаток в ячейке на начало дня (PARTITION BY slot, agent, item)"
         tests: [not_null]
       - name: quantity
         description: "Нетто изменение остатка за день (все операции)"
         tests: [not_null]
-      - name: close_balance
-        description: "Остаток на конец дня"
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня"
+        tests: [not_null]
+      - name: open_total_balance
+        description: "Остаток товара у агента по всем ячейкам на начало дня (PARTITION BY agent, item; move не учитывается)"
+        tests: [not_null]
+      - name: close_total_balance
+        description: "Остаток товара у агента по всем ячейкам на конец дня"
         tests: [not_null]
       - name: real_in
         description: "Приход по реальным операциям (supply, enter) за день"
-      - name: real_out
-        description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
       - name: move_in
         description: "Приход от перемещений (move in) за день"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
       - name: move_out
         description: "Расход от перемещений (move out) за день — отрицательное число"
+
+  - name: int_premart__balance_daily_by_slot_grid
+    description: >
+      Ежедневная сетка с зерном слот × товар × день (без агента).
+      Roll-up поверх int_premart__balance_daily_atomic_grid: суммирует движения по всем агентам,
+      пересчитывает балансы на новом зерне.
+      open/close_total_balance — остаток товара по всем ячейкам (PARTITION BY item_id; агент не учитывается).
+      Атрибуты агента не включены — на этом уровне агент не имеет смысла.
+    columns:
+      - name: slot_id
+        description: "UUID ячейки"
+      - name: item_id
+        description: "UUID товара/варианта"
+        tests: [not_null]
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: open_slot_balance
+        description: "Остаток в ячейке на начало дня (по всем агентам)"
+      - name: quantity
+        description: "Нетто изменение остатка за день (все агенты)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня (по всем агентам)"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам на начало дня"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам на конец дня"
+      - name: real_in
+        description: "Приход по реальным операциям за день (все агенты)"
+      - name: move_in
+        description: "Приход от перемещений за день (все агенты)"
+      - name: real_out
+        description: "Расход по реальным операциям за день — отрицательное число"
+      - name: move_out
+        description: "Расход от перемещений за день — отрицательное число"
