@@ -1,6 +1,8 @@
 -- warehouse__balance_daily_atomic_grid.sql — витрина занятых ячеек по дням (слот × агент × товар × день).
 -- Строится на основе int_premart__balance_daily_atomic_grid (только строки с is_used != 0).
 -- Содержит балансы по ячейке (slot) и суммарные по товару+агенту (total), разбивку оборота на real/move.
+-- Материализована как view: вычисления уже выполнены в int_premart (silver), дублировать таблицу нет смысла.
+{{ config(materialized='view') }}
 SELECT
 	agent_name
 	, depositor_name
