@@ -3,14 +3,14 @@
 #
 # Четыре контейнера в одной внутренней сети:
 #
-#   postgres         — база данных (raw, bronze, silver, gold + метаданные Prefect)
+#   postgres         — база данных (raw, bronze, silver, gold + метаданные Prefect и Lightdash)
 #   prefect-server   — UI и API Prefect (localhost:4200)
 #   prefect-worker   — выполняет flows (ingest, dbt)
-#   grafana          — дашборды (localhost:3000)
+#   lightdash        — BI-дашборды поверх dbt-моделей (localhost:8080)
 #
 # Переменные окружения читаются из файла .env в корне проекта.
-# Docker Compose читает .env по умолчанию — он автоматически ищет файл .env 
-# в той же папке где лежит docker-compose.yml, без явного указания. 
+# Docker Compose читает .env по умолчанию — он автоматически ищет файл .env
+# в той же папке где лежит docker-compose.yml, без явного указания.
 # Это встроенное поведение Docker Compose.
 # Один и тот же docker-compose.yml работает локально и на сервере —
 # меняется только .env.
@@ -44,7 +44,7 @@ services:
   # Prefect Server
   # ---------------------------------------------------------------------------
   prefect-server:
-    image: prefecthq/prefect:3-python3.11
+    image: prefecthq/prefect:3.6.27-python3.11
     container_name: tslots-prefect-server
     restart: unless-stopped
     depends_on:
@@ -101,23 +101,32 @@ services:
       "
 
   # ---------------------------------------------------------------------------
-  # Grafana
+  # Lightdash — BI поверх dbt-моделей
   # ---------------------------------------------------------------------------
-  grafana:
-    image: grafana/grafana:10.4.0
-    container_name: tslots-grafana
+  lightdash:
+    image: lightdash/lightdash:0.2772.4
+    container_name: tslots-lightdash
     restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      # Lightdash хранит своё состояние (дашборды, пользователей, чарты) в PostgreSQL.
+      PGHOST:              postgres
+      PGPORT:              5432
+      PGUSER:              ${DB_USER}
+      PGPASSWORD:          ${DB_PASSWORD}
+      PGDATABASE:          ${DB_NAME}
+      LIGHTDASH_SECRET:    ${LIGHTDASH_SECRET}
+      SITE_URL:            http://localhost:8080
+      LIGHTDASH_LOG_LEVEL: warn
     volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      # dbt-проект монтируется — Lightdash читает модели и метаданные напрямую.
+      - ./dbt/tslots:/usr/app/dbt
+      - lightdash_volume:/home/lightdash/.lightdash
     ports:
-      - "3000:3000"
+      - "8080:8080"
 
 volumes:
   postgres_data:
-  grafana_data:
+  lightdash_volume:

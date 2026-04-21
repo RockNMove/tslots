@@ -36,7 +36,7 @@
 
 В МойСклад нет возможности задать условия для предупреждений об аномальных ситуациях — система не сигнализирует об отрицательном остатке в ячейке, о нескольких разных товарах в одной ячейке или о расхождении фактического остатка с ожидаемым.
 
-**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Grafana. Подробнее — в разделе «Диагностика».
+**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Lightdash.
 
 ---
 
@@ -55,7 +55,7 @@
 
 ### Флаг занятости — поле `is_used`
 
-Поле вычисляется в `int_premart__balance_daily_atomic_grid` и определяет, считается ли ячейка физически занятой в данный день. В финальные витрины попадают только строки с `is_used != 0`.
+Поле вычисляется в `int_balance__agent_slot_item_daily_spine` и определяет, считается ли ячейка физически занятой в данный день. В финальные витрины попадают только строки с `is_used != 0`.
 
 | Значение | Условие | Смысл |
 |---|---|---|
@@ -108,7 +108,7 @@ tslots забирает через API и обрабатывает следую�
 - Цены, себестоимость, финансовые документы (счета, платежи, договоры)
 - Заказы покупателей и поставщикам
 - Сборочные задания, производственные операции
-- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_premart__operations_each` через INNER JOIN на справочник товаров
+- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_prep__operations_each` через INNER JOIN на справочник товаров
 
 tslots отслеживает исключительно **движение товаров в разрезе ячеек, контрагентов и поклажедателей**. Всё что не является товаром (`product` или `variant`) в аналитику не попадает.
 
@@ -121,20 +121,20 @@ tslots отслеживает исключительно **движение то
 │                   Docker (локально или сервер)                   │
 │                                                                  │
 │  ┌──────────────┐     ┌─────────────────┐     ┌─────────────┐  │
-│  │   postgres   │◄────│ prefect-worker  │     │   grafana   │  │
-│  │   :5432      │◄────│ prefect-server  │     │   :3000     │  │
+│  │   postgres   │◄────│ prefect-worker  │     │  lightdash  │  │
+│  │   :5432      │◄────│ prefect-server  │     │   :8080     │  │
 │  └──────────────┘     │   :4200         │     └──────┬──────┘  │
 │         ▲             └─────────────────┘            │          │
 │         └────────────────────────────────────────────┘          │
 └─────────────────────────────────────────────────────────────────┘
           │                     │                    │
-    localhost:5432        localhost:4200        localhost:3000
-  (VS Code, DBeaver)     (Prefect UI)          (Grafana UI)
+    localhost:5432        localhost:4200        localhost:8080
+  (VS Code, DBeaver)     (Prefect UI)          (Lightdash UI)
 
 МойСклад API ──► prefect-worker (ingest) ──► postgres (layer_raw)
                  prefect-worker (dbt)    ──► postgres (bronze/silver/gold)
                                                       │
-                                                  grafana
+                                                  lightdash
 ```
 
 ### Контейнеры
@@ -144,17 +144,19 @@ tslots отслеживает исключительно **движение то
 | tslots-postgres | postgres:16-alpine | 5432 | База данных |
 | tslots-prefect-server | prefecthq/prefect:3-python3.11 | 4200 | UI и API Prefect |
 | tslots-prefect-worker | prefect/Dockerfile (custom) | — | Выполняет flow и dbt |
-| tslots-grafana | grafana/grafana:10.4.0 | 3000 | Дашборды |
+| tslots-lightdash | lightdash/lightdash:latest | 8080 | BI-дашборды поверх dbt-моделей |
 
 ### Volumes и хранение данных
 
 | Что | Где хранится | `docker-compose down` | `docker-compose down -v` |
 |---|---|---|---|
 | Данные PostgreSQL | Docker volume `postgres_data` | Сохранятся | **Удалятся** |
-| Дашборды Grafana | `grafana/provisioning/` (в git) | Сохранятся | Сохранятся |
-| Служебные данные Grafana | Docker volume `grafana_data` | Сохранятся | **Удалятся** |
+| Дашборды Lightdash | В PostgreSQL (`postgres_data`) | Сохранятся | **Удалятся** |
+| Кэш Lightdash | Docker volume `lightdash_volume` | Сохранятся | **Удалятся** |
 | Код и модели | `tslots/` (в git) | Сохранятся | Сохранятся |
 | Секреты | `.env` (не в git) | Сохранятся | Сохранятся |
+
+> **Важно:** Lightdash хранит все дашборды, чарты и сохранённые запросы в PostgreSQL, а не в файлах. `docker-compose down` без флага `-v` сохраняет всё состояние. При `down -v` потребуется повторить первоначальную настройку Lightdash.
 
 ### Монтирование папок
 
@@ -162,12 +164,12 @@ tslots отслеживает исключительно **движение то
 Твой комп                          Контейнер
 ──────────────────────────────     ──────────────────────────────
 tslots/                      →     /app/                (prefect-worker)
-tslots/grafana/provisioning/ →     /etc/grafana/provisioning/ (grafana)
+tslots/dbt/                  →     /usr/app/dbt/        (lightdash)
 Docker volume postgres_data  →     /var/lib/postgresql/data   (postgres)
-Docker volume grafana_data   →     /var/lib/grafana           (grafana)
+Docker volume lightdash_vol  →     /home/lightdash/.lightdash (lightdash)
 ```
 
-Ты редактируешь файлы в VS Code → prefect-worker видит изменения сразу, без перезапуска.
+Ты редактируешь файлы в VS Code → prefect-worker и lightdash видят изменения сразу, без перезапуска.
 
 ---
 
@@ -202,7 +204,7 @@ layer_gold.*           ← warehouse: warehouse__operations_with_balance,
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings
      ▼
-Grafana дашборды
+Lightdash дашборды
 ```
 
 ### Расписание
@@ -267,7 +269,7 @@ Grafana дашборды
 | warehouse | warehouse__balance_daily_no_agent | int_balance__slot_item_daily_spine | Остаток товара в ячейке по дням без разбивки по агенту, только ненулевые строки |
 | partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
 | focus | focus__slots_used_monthly | int_balance__agent_slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
-| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Grafana |
+| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Lightdash |
 
 Все модели — таблицы.
 
@@ -313,14 +315,6 @@ tslots/
 │               └── focus/       ← focus__slots_used_monthly,
 │                                   focus__errors_warnings
 │
-├── grafana/
-│   └── provisioning/
-│       ├── datasources/
-│       │   └── postgres.yml   ← подключение к PostgreSQL
-│       └── dashboards/
-│           ├── dashboards.yml
-│           └── *.json         ← дашборды (в git, не потеряются)
-│
 └── test_notebooks/            ← Jupyter для исследования данных
 ```
 
@@ -352,7 +346,8 @@ cp .env.example .env
 
 Открой `.env` и заполни:
 - `MS_TOKEN` — токен из МойСклад (Настройки → Безопасность → Токены)
-- Пароли можно оставить как есть для локальной установки
+- `LIGHTDASH_SECRET` — любая случайная строка минимум 32 символа
+- Пароли PostgreSQL можно оставить как есть для локальной установки
 
 ### Шаг 3 — Запусти контейнеры
 
@@ -380,10 +375,53 @@ Prefect UI → http://localhost:4200 → Deployments → tslots_daily_deploy →
 Flow выполнит 4 шага: ingest → bronze → silver → gold.
 Следи за логами: Flow Runs → последний запуск → Logs.
 
-### Шаг 5 — Grafana
+### Шаг 5 — Настрой Lightdash (первый раз)
 
-Открой http://localhost:3000
-Логин: значения `GRAFANA_USER` и `GRAFANA_PASSWORD` из `.env`
+Открой http://localhost:8080
+
+#### 5.1 — Аккаунт и организация
+
+Заполни имя, email, пароль и название организации.
+
+> Эти данные хранятся только в локальной PostgreSQL, никуда не отправляются — можно вводить любые, в том числе несуществующие.
+
+Способ подключения — выбери **Manually**.
+
+#### 5.2 — Подключение к PostgreSQL (Warehouse connection)
+
+Все значения берутся из `.env`:
+
+| Поле | Значение |
+|---|---|
+| Host | `DB_HOST` из `.env` |
+| User | `DB_USER` из `.env` |
+| Password | `DB_PASSWORD` из `.env` |
+| DB name | `DB_NAME` из `.env` |
+
+Раскрой **Advanced configuration options** → **SSL mode: `disable`**
+
+> SSL отключается потому что Lightdash и PostgreSQL находятся в одной внутренней Docker-сети и общаются напрямую — шифровать внутренний трафик не нужно. PostgreSQL контейнер по умолчанию не настроен на SSL, поэтому попытка подключиться с SSL вызовет ошибку.
+
+#### 5.3 — Подключение к dbt (dbt connection)
+
+| Поле | Значение |
+|---|---|
+| Type | `dbt local server` |
+| dbt version | `v1.10` |
+| Target name | оставь пустым — подхватится из `profiles.yml` |
+| Schema | `layer_gold` |
+
+> Поле Schema — это схема по умолчанию для новых запросов в Lightdash. Указываем `layer_gold` потому что там находятся финальные витрины (marts) — данные которые используются для отчётов. Модели из других схем (silver, bronze) тоже будут доступны через dbt-манифест.
+
+Нажми **Test & compile project** — Lightdash запустит `dbt compile` и прочитает все модели из проекта.
+
+#### 5.4 — Выбор моделей для проекта
+
+После компиляции Lightdash покажет опции для включения в проект dbt-моделей. Выбери какие из них будут доступны в проекте для построения чартов и дашбордов.
+
+> Это однократная настройка. При последующих `docker-compose up` Lightdash стартует сразу без мастера — состояние хранится в PostgreSQL.
+>
+> `docker-compose down` без флага `-v` сохраняет всё состояние. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
 
 ---
 
@@ -391,13 +429,18 @@ Flow выполнит 4 шага: ingest → bronze → silver → gold.
 
 Процедура идентична локальной. Отличия:
 
-**`.env`** — боевые пароли и токены.
+**`.env`** — боевые пароли, токены и уникальный `LIGHTDASH_SECRET`.
 
 **Адреса** — вместо `localhost` используй IP сервера:
 - Prefect UI: `http://<IP>:4200`
-- Grafana: `http://<IP>:3000`
+- Lightdash: `http://<IP>:8080`
 
-**Firewall** — открой порты 4200 и 3000.
+Также обнови `SITE_URL` в `.env` (если добавишь его отдельной переменной) или в `docker-compose.yml`:
+```yaml
+SITE_URL: http://<IP>:8080
+```
+
+**Firewall** — открой порты 4200 и 8080.
 
 ```bash
 git clone <url репозитория>
@@ -420,6 +463,7 @@ docker-compose ps
 ```bash
 docker-compose logs -f prefect-worker
 docker-compose logs -f postgres
+docker-compose logs -f lightdash
 ```
 
 ### Остановить (данные сохранятся)
@@ -427,7 +471,7 @@ docker-compose logs -f postgres
 docker-compose down
 ```
 
-### Удалить всё включая данные БД
+### Удалить всё включая данные БД и дашборды Lightdash
 ```bash
 docker-compose down -v
 ```
@@ -464,6 +508,7 @@ docker exec -it tslots-prefect-worker bash -c "
 ```bash
 docker exec -it tslots-prefect-worker bash
 docker exec -it tslots-postgres bash
+docker exec -it tslots-lightdash bash
 ```
 
 ---
@@ -474,17 +519,24 @@ docker exec -it tslots-postgres bash
 
 | Переменная | Где используется |
 |---|---|
-| `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt |
-| `GRAFANA_PASSWORD` | Grafana UI |
+| `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt, Lightdash |
+| `LIGHTDASH_SECRET` | Подпись JWT-токенов Lightdash |
 | `MS_TOKEN` | МойСклад API |
 
-### Смена MS_TOKEN или GRAFANA_PASSWORD
+### Смена MS_TOKEN
 
 1. Измени значение в `.env`
-2. Перезапусти нужный контейнер:
+2. Перезапусти worker:
 ```bash
-docker-compose restart prefect-worker   # для MS_TOKEN
-docker-compose restart grafana          # для GRAFANA_PASSWORD
+docker-compose restart prefect-worker
+```
+
+### Смена LIGHTDASH_SECRET
+
+1. Измени значение в `.env`
+2. Перезапусти Lightdash:
+```bash
+docker-compose restart lightdash
 ```
 
 ### Смена DB_PASSWORD
@@ -498,5 +550,5 @@ docker exec -it tslots-postgres psql -U tslots -d tslots -c "
 2. Обнови `.env`
 3. Перезапусти зависимые контейнеры:
 ```bash
-docker-compose restart prefect-server prefect-worker grafana
+docker-compose restart prefect-server prefect-worker lightdash
 ```

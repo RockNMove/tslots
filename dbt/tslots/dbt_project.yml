@@ -1,32 +1,24 @@
-# dbt_project.yml — главный конфиг dbt проекта tslots.
-#
-# Определяет:
-#   - где искать модели, тесты, макросы
-#   - в какую схему PostgreSQL материализовать каждый слой
-
-name: 'tslots'
-version: '1.0.0'
+name: tslots
+version: 1.0.0
 config-version: 2
-
-# Имя профиля подключения из profiles.yml.
-profile: 'tslots'
-
-model-paths: ["models"]
-test-paths:  ["tests"]
-seed-paths:  ["seeds"] 
-macro-paths: ["macros"]
-
+profile: tslots
+model-paths:
+  - models
+test-paths:
+  - tests
+seed-paths:
+  - seeds
+macro-paths:
+  - macros
 models:
   tslots:
     staging:
       +materialized: table
       +schema: bronze
     intermediate:
-      # layer_silver: промежуточные модели — денормализация, объединение источников.
       +materialized: table
       +schema: silver
     marts:
-      # layer_gold: витрины
       +materialized: table
       +schema: gold
-
+target-path: target

@@ -1,4 +1,4 @@
-FROM prefecthq/prefect:3-python3.11
+FROM prefecthq/prefect:3.6.27-python3.11
 
 # Устанавливаем зависимости через pip (без pipenv — внутри контейнера он не нужен)
 RUN pip install --no-cache-dir \

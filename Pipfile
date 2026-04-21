@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 dbt-postgres = "==1.10.0"
-prefect = "==3.1.0"
+prefect = "==3.6.27"
 requests = "==2.31.0"
 pandas = "==3.0.0"
 sqlalchemy = "==2.0.36"
