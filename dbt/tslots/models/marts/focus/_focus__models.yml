@@ -1,10 +1,52 @@
 version: 2
 
 models:
+  - name: focus__errors_warnings
+    description: >
+      Витрина аномалий операций — строки из int_operations_with_balance__agent_slot_item
+      где slot_errors IS NOT NULL.
+      Зерно: одна строка на операцию с диагностированной проблемой.
+      Типы ошибок: ERROR slot overdraft (отрицательный остаток),
+      WARNING slot has > 1 items (несколько товаров в ячейке),
+      WARNING unexpected slot balance (расхождение с expected_bin_qty).
+      Используется для мониторинга в Grafana.
+    columns:
+      - name: moment_day
+        description: "Дата операции"
+      - name: store_name
+        description: "Название склада"
+      - name: agent_name
+        description: "Название агента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: doc_name
+        description: "Номер документа"
+      - name: item_name
+        description: "Название товара/варианта"
+      - name: op_type
+        description: "Направление операции: in / out"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+      - name: items_in_slot
+        description: "Кол-во операций по данному товару в ячейке за день"
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке"
+      - name: slot_errors
+        description: "Диагностика: ERROR slot overdraft / WARNING slot has > 1 items / WARNING unexpected slot balance"
+
   - name: focus__slots_used_monthly
     description: >
       Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей.
-      Строится на основе int_premart__balance_daily_atomic_grid (только is_used != 0).
+      Зерно: агент × поклажедатель × месяц.
+      Строится на основе int_balance__agent_slot_item_daily_spine (только is_used != 0).
       slots_used — кол-во уникальных ячеек занятых за месяц.
     columns:
       - name: agent_name

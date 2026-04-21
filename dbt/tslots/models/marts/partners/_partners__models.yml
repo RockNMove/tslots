@@ -1,20 +1,17 @@
 version: 2
 
 models:
-  - name: partners__nrb_stock_movements_each
+  - name: partners__nrb_stock_movements
     description: >
       Отчёт движений товаров с нарастающим остатком — для партнёров.
-      Строится на основе int_premart__operations_each. Перемещения (move) исключены.
+      Зерно: одна строка на операцию (без move).
+      Строится на основе int_operations_with_balance__agent_slot_item. Перемещения (move) исключены.
       open_balance / close_balance — нарастающий остаток по всем складам в разрезе agent × item; move не учитывается.
     columns:
       - name: agent_name
         description: "Название агента"
       - name: agent_inn
         description: "ИНН агента"
-      - name: depositor_name
-        description: "Название поклажедателя"
-      - name: depositor_inn
-        description: "ИНН поклажедателя"
       - name: article
         description: "Артикул товара"
       - name: item_name
@@ -30,8 +27,8 @@ models:
       - name: doc_name
         description: "Номер документа"
       - name: open_balance
-        description: "Остаток товара до операции"
+        description: "Остаток товара у агента до операции"
       - name: quantity
         description: "Количество (отрицательное для расхода)"
       - name: close_balance
-        description: "Остаток товара после операции"
+        description: "Остаток товара у агента после операции"

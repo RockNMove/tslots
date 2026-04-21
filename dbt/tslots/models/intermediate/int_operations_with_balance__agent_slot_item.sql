@@ -1,0 +1,91 @@
+-- int_operations_with_balance__agent_slot_item.sql — операции с денормализованными атрибутами и нарастающими балансами.
+-- Зерно: одна строка на операцию (agent × slot × item).
+-- INNER JOIN на int_prep__items_united_enriched отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
+-- store_name берётся из документа (через store_id), а не из ячейки —
+-- это позволяет корректно показывать склад даже когда ячейка не указана.
+-- open/close_total_balance — нарастающий остаток по товару (item_id), все склады вместе; move не учитывается.
+-- open/close_slot_balance  — нарастающий остаток по товару в ячейке (item_id, slot_id); операции без slot_id не учитываются.
+-- items_in_slot            — кол-во операций по одному товару в ячейке за день (PARTITION BY item_id, date, slot_id).
+WITH
+	tab AS(
+		SELECT
+			o.item_id
+			, o.slot_id
+			, s.store_id
+			, o.agent_id
+			, i.depositor_id
+			, i.expected_bin_qty
+			, s.name AS store_name
+			, sz.zone_name
+			, o.doc_type
+			, o.number AS doc_name
+			, o.moment
+			, o.moment::date AS moment_day
+			, o.op_type 
+			, sz.slot_name
+			, o.quantity
+			, CASE WHEN o.doc_type != 'move' AND o.quantity > 0 THEN o.quantity ELSE 0 END AS real_in
+			, CASE WHEN o.doc_type != 'move' AND o.quantity < 0 THEN o.quantity ELSE 0 END AS real_out
+			, CASE WHEN o.doc_type  = 'move' AND o.quantity > 0 THEN o.quantity ELSE 0 END AS move_in
+			, CASE WHEN o.doc_type  = 'move' AND o.quantity < 0 THEN o.quantity ELSE 0 END AS move_out
+			, i.uom
+			, i.name AS item_name
+			, i.product 
+			, i.lot
+			, i.mfg_date 
+			, i.article 
+			, i.weight 
+			, i.volume 
+			, a.name AS agent_name
+			, a.inn AS agent_inn
+			, i.depositor_name
+			, i.depositor_inn
+			, COUNT(*) OVER(PARTITION BY o.item_id, o.moment::date, o.slot_id) AS items_in_slot
+		FROM {{ ref('int_prep__operations_united') }} o
+		INNER JOIN {{ ref('int_prep__items_united_enriched') }} i ON o.item_id=i.item_id     -- lot, mfg_date, uom, depositor и др.
+		LEFT JOIN {{ ref('int_prep__slots_and_zones') }} sz ON o.slot_id=sz.slot_id          -- slot_name, zone_name; NULL если ячейка не указана
+		LEFT JOIN {{ ref('stg_moy_sklad__agents') }} a ON o.agent_id=a.agent_id       -- agent_name/inn из документа (demand, supply)
+		LEFT JOIN {{ ref('stg_moy_sklad__stores') }} s ON o.store_id=s.store_id       -- store_name из документа, не из ячейки
+	),
+	tab_with_balance AS(	
+		SELECT
+		*
+		, COALESCE(
+			SUM(CASE WHEN slot_id is NULL then 0 else quantity END) OVER(
+				PARTITION BY store_id, agent_id, item_id, slot_id
+				ORDER BY moment
+				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+			),
+		0) AS open_slot_balance
+		, COALESCE(
+			SUM(CASE WHEN slot_id is NULL then 0 else quantity END) OVER(
+				PARTITION BY store_id, agent_id, item_id, slot_id
+				ORDER BY moment
+				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+			),
+		0) AS close_slot_balance
+		, COALESCE(
+			SUM(real_in+real_out) OVER(
+				PARTITION BY agent_id, item_id
+				ORDER BY moment
+				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+			),
+		0) AS open_total_balance
+		, COALESCE(
+			SUM(real_in+real_out) OVER(
+				PARTITION BY agent_id, item_id
+				ORDER BY moment
+				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+			),
+		0) AS close_total_balance
+		FROM tab
+	)
+SELECT
+*
+, CASE 
+	WHEN close_slot_balance<0 THEN 'ERROR: slot overdraft'
+	WHEN items_in_slot >1 THEN 'WARNING: slot has > 1 items'
+	WHEN close_slot_balance != expected_bin_qty THEN 'WARNING: unexpected slot balance'
+	ELSE NULL 
+END AS slot_errors
+FROM tab_with_balance

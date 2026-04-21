@@ -58,7 +58,6 @@ models:
         description: "Партия — характеристика варианта"
       - name: mfg_date
         description: "Дата выработки — характеристика варианта"
-      - name: barcodes
       - name: updated
 
   - name: stg_moy_sklad__uoms

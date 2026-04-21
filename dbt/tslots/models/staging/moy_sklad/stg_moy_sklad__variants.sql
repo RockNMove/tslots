@@ -11,7 +11,6 @@ select
         raw_json,
         '$.characteristics[*] ? (@.name == "дата выработки").value'
     ) #>> '{}'                                                          as mfg_date,
-    raw_json->'barcodes'                                                as barcodes,
     (raw_json->>'updated')::timestamp                                 as updated
 from {{ source('moysklad', 'raw') }}
 where entity = 'variant'

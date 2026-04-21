@@ -16,7 +16,7 @@
 
 В МойСклад каждый тип операции живёт в отдельном разделе: приёмки, реализации, перемещения, списания, оприходования. Чтобы отследить путь товара и найти причину расхождения, нужно одновременно смотреть несколько разделов и сопоставлять данные вручную. Кроме того, ни в одном из этих разделов нет возможности видеть рядом с каждой операцией входящий остаток, движение и исходящий остаток — как в стандартной карточке складского учёта.
 
-**tslots:** `warehouse__operations_balance_atomic_each` — единая таблица всех движений по всем типам документов. Каждая строка содержит `open_slot_balance`, `quantity`, `close_slot_balance` (по конкретной ячейке) и `open_total_balance`, `close_total_balance` (суммарно по товару у агента). Полная картина движений в одном запросе.
+**tslots:** `warehouse__operations_with_balance` — единая таблица всех движений по всем типам документов. Каждая строка содержит `open_slot_balance`, `quantity`, `close_slot_balance` (по конкретной ячейке) и `open_total_balance`, `close_total_balance` (суммарно по товару у агента). Полная картина движений в одном запросе.
 
 ### 2. Нельзя построить отчёт по истории занятости ячеек
 
@@ -24,7 +24,7 @@
 
 Это критично для ответственного хранения: чтобы выставить клиенту счёт за посуточное хранение в ячейках, нужно знать точное количество ячейко-дней по каждому поклажедателю. Дополнительная сложность — перемещения: когда товар перекладывают из ячейки в ячейку, занятость в день транзита требует отдельной кастомной логики подсчёта, чтобы не исказить итоговый счёт.
 
-**tslots:** `int_premart__balance_daily_atomic_grid` строит непрерывный ряд дат по каждой тройке (ячейка × агент × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily_atomic_grid` и `focus__slots_used_monthly` дают готовые отчёты по занятости и агрегаты по месяцам — основу для выставления счетов поклажедателям.
+**tslots:** `int_balance__agent_slot_item_daily_spine` строит непрерывный ряд дат по каждой тройке (ячейка × агент × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily` и `focus__slots_used_monthly` дают готовые отчёты по занятости и агрегаты по месяцам — основу для выставления счетов поклажедателям.
 
 ### 3. Нет SQL-доступа к данным
 
@@ -36,7 +36,7 @@
 
 В МойСклад нет возможности задать условия для предупреждений об аномальных ситуациях — система не сигнализирует об отрицательном остатке в ячейке, о нескольких разных товарах в одной ячейке или о расхождении фактического остатка с ожидаемым.
 
-**tslots:** `warehouse__operations_balance_atomic_each` содержит поле `slot_errors` с метками аномалий. Поверх этих меток можно настроить алерты в Grafana. Подробнее — в разделе «Диагностика».
+**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Grafana. Подробнее — в разделе «Диагностика».
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### Аномалии операций — поле `slot_errors`
 
-Поле присутствует в витрине `warehouse__operations_balance_atomic_each`. Вычисляется по каждой операции:
+Поле вычисляется в `int_operations_with_balance__agent_slot_item` и присутствует в витринах `warehouse__operations_with_balance` и `focus__errors_warnings`. Вычисляется по каждой операции:
 
 | Значение | Условие | Смысл |
 |---|---|---|
@@ -189,16 +189,18 @@ layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
      │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
      ▼  [3] dbt run --select intermediate
-layer_silver.*         ← int_enrich__operations_united,
-     │                    int_enrich__items_united_extended, int_enrich__slots_extended,
-     │                    int_premart__operations_each,
-     │                    int_premart__slots_balance_daily_grid
+layer_silver.*         ← prep: int_prep__operations_united,
+     │                         int_prep__items_united_enriched, int_prep__slots_enriched
+     │                    int_operations_with_balance__agent_slot_item,
+     │                    int_balance__agent_slot_item_daily_spine,
+     │                    int_balance__slot_item_daily_spine
      ▼  [4] dbt run --select marts
-layer_gold.*           ← warehouse: warehouse__slots_balance_clients_usage_days,
-     │                              warehouse__operations_results_clients_each,
-     │                              warehouse__items_in_slots_daily
-     │                    partners: partners__nrb_stock_movements_each
-     │                    focus:    focus__slots_used_monthly
+layer_gold.*           ← warehouse: warehouse__operations_with_balance,
+     │                              warehouse__balance_daily,
+     │                              warehouse__balance_daily_no_agent
+     │                    partners: partners__nrb_stock_movements
+     │                    focus:    focus__slots_used_monthly,
+     │                              focus__errors_warnings
      ▼
 Grafana дашборды
 ```
@@ -247,11 +249,12 @@ Grafana дашборды
 
 | Модель | Описание |
 |---|---|
-| int_enrich__operations_united | Единая таблица операций: UNION ALL из 5 staging-таблиц |
-| int_enrich__items_united_extended | Единый справочник позиций: варианты + товары без вариантов, с uom, lot, expected_bin_qty, barcodes |
-| int_enrich__slots_extended | Ячейки с денормализованными названиями склада и зоны |
-| int_premart__operations_each | Операции с атрибутами позиций, ячеек, контрагентов. INNER JOIN отфильтровывает услуги и наборы |
-| int_premart__slots_balance_daily_grid | Ежедневная ведомость занятых ячеек (slot × agent × item × день). seek_end = CURRENT_DATE. Только строки с is_used != 0 |
+| int_prep__operations_united | UNION ALL из 5 staging-таблиц операций |
+| int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty, barcodes |
+| int_prep__slots_enriched | Ячейки с денормализованными названиями склада и зоны |
+| int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_errors. INNER JOIN отфильтровывает услуги и наборы |
+| int_balance__agent_slot_item_daily_spine | Ежедневная сетка (agent × slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0 |
+| int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день) без агента. Roll-up поверх agent-spine |
 
 Все модели — таблицы.
 
@@ -259,11 +262,12 @@ Grafana дашборды
 
 | Папка | Модель | Источник | Описание |
 |---|---|---|---|
-| warehouse | warehouse__slots_balance_clients_usage_days | int_premart__slots_balance_daily_grid | Занятые ячейки по дням: остатки, real/move in/out по агенту и поклажедателю |
-| warehouse | warehouse__operations_results_clients_each | int_premart__operations_each | Все движения с open/close остатками total и по ячейке, диагностика slot_errors |
-| warehouse | warehouse__items_in_slots_daily | int_premart__slots_balance_daily_grid | Нарастающий остаток товара в ячейке по дням, только ненулевые строки |
-| partners | partners__nrb_stock_movements_each | int_premart__operations_each | Движения без move, с нарастающим остатком — для поклажедателей |
-| focus | focus__slots_used_monthly | int_premart__slots_balance_daily_grid | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
+| warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_errors |
+| warehouse | warehouse__balance_daily | int_balance__agent_slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по агенту и поклажедателю |
+| warehouse | warehouse__balance_daily_no_agent | int_balance__slot_item_daily_spine | Остаток товара в ячейке по дням без разбивки по агенту, только ненулевые строки |
+| partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
+| focus | focus__slots_used_monthly | int_balance__agent_slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
+| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Grafana |
 
 Все модели — таблицы.
 
@@ -295,15 +299,19 @@ tslots/
 │       └── models/
 │           ├── staging/
 │           │   └── moy_sklad/   ← layer_bronze: stg_moy_sklad__*
-│           ├── intermediate/    ← layer_silver: int_enrich__operations_united, int_enrich__items_united_extended,
-│           │                       int_enrich__slots_extended, int_premart__operations_each,
-│           │                       int_premart__slots_balance_daily_grid
+│           ├── intermediate/    ← layer_silver:
+│           │   ├── prep/           int_prep__operations_united, int_prep__items_united_enriched,
+│           │   │                   int_prep__slots_enriched
+│           │   └── (корень)        int_operations_with_balance__agent_slot_item,
+│           │                       int_balance__agent_slot_item_daily_spine,
+│           │                       int_balance__slot_item_daily_spine
 │           └── marts/
-│               ├── warehouse/   ← warehouse__slots_balance_clients_usage_days,
-│               │                   warehouse__operations_results_clients_each,
-│               │                   warehouse__items_in_slots_daily
-│               ├── partners/    ← partners__nrb_stock_movements_each
-│               └── focus/       ← focus__slots_used_monthly
+│               ├── warehouse/   ← warehouse__operations_with_balance,
+│               │                   warehouse__balance_daily,
+│               │                   warehouse__balance_daily_no_agent
+│               ├── partners/    ← partners__nrb_stock_movements
+│               └── focus/       ← focus__slots_used_monthly,
+│                                   focus__errors_warnings
 │
 ├── grafana/
 │   └── provisioning/

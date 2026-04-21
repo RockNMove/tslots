@@ -1,13 +1,11 @@
--- partners__nrb_stock_movements_each.sql — отчёт движений товаров с нарастающим остатком (для партнёров).
--- Строится на основе int_premart__operations_each.
+-- partners__nrb_stock_movements.sql — отчёт движений товаров с нарастающим остатком (для партнёров).
+-- Строится на основе int_operations_with_balance__agent_slot_item.
 -- Перемещения (move) исключены — только реальный приход и расход.
 -- open_balance / close_balance — нарастающий остаток по всем складам в разрезе (agent_id, item_id); move не учитывается.
 WITH tab AS (
 	SELECT
 		agent_name
 		, agent_inn
-		, depositor_name
-		, depositor_inn
 		, article
 		, item_name
 		, lot
@@ -30,9 +28,9 @@ WITH tab AS (
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			),
 		0) AS close_balance
-	FROM {{ ref('int_premart__operations_each') }}
+	FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
 )
 SELECT *
 FROM tab
 WHERE doc_type != 'move'
-ORDER BY agent_name, depositor_name, item_name, doc_time
+ORDER BY agent_name, item_name, doc_time

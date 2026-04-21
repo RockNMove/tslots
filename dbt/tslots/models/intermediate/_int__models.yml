@@ -1,124 +1,20 @@
 version: 2
 
 models:
-  - name: int_enrich__operations_united
+  - name: int_operations_with_balance__agent_slot_item
     description: >
-      Единая таблица позиций по всем типам операционных документов.
-      Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
-      Содержит store_id документа — используется в int_premart__operations_each для получения названия склада.
-    columns:
-      - name: doc_id
-        description: "UUID документа"
-        tests: [not_null]
-      - name: position_id
-        description: "UUID позиции документа из МойСклад — уникален внутри документа, используется как ключ MERGE"
-        tests: [not_null]
-      - name: moment
-        description: "Дата и время документа"
-        tests: [not_null]
-      - name: number
-        description: "Номер документа"
-      - name: agent_id
-        description: "UUID контрагента (NULL для move, loss, enter)"
-      - name: store_id
-        description: "UUID склада документа"
-      - name: item_id
-        description: "UUID позиции (variant_id или product_id)"
-        tests: [not_null]
-      - name: quantity
-        description: "Количество (отрицательное для расхода)"
-        tests: [not_null]
-      - name: slot_id
-        description: "UUID ячейки хранения"
-      - name: updated
-        description: "Время последнего изменения документа"
-        tests: [not_null]
-      - name: doc_type
-        description: "Тип документа: demand, supply, loss, enter, move"
-        tests:
-          - accepted_values:
-              arguments:
-                values: ['demand', 'supply', 'loss', 'enter', 'move']
-      - name: op_type
-        description: "Направление: in (приход) или out (расход)"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['in', 'out']
-
-  - name: int_enrich__items_united_extended
-    description: >
-      Единый справочник позиций (товаров и вариантов) с денормализованными атрибутами.
-      В МойСклад операции могут ссылаться как на product, так и на variant —
-      эта модель объединяет оба типа под общим item_id.
-      Используется в int_premart__operations_each для обогащения операций атрибутами товаров.
-    columns:
-      - name: item_id
-        description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
-        tests: [not_null]
-      - name: depositor_id
-        description: "UUID поклажедателя (из атрибута товара)"
-      - name: expected_bin_qty
-        description: "Кол-во единиц товара в одной ячейке (атрибут из МойСклад)"
-      - name: name
-        description: "Полное название: для варианта — 'товар (партия, дата)', для товара — просто название"
-        tests: [not_null]
-      - name: updated
-        description: "Время последнего обновления записи"
-        tests: [not_null]
-      - name: product
-        description: "Название родительского товара (NULL для строк-товаров без вариантов)"
-      - name: lot
-        description: "Партия — характеристика варианта (NULL для товаров без вариантов)"
-      - name: mfg_date
-        description: "Дата выработки — характеристика варианта (NULL для товаров без вариантов)"
-      - name: barcodes
-        description: "Штрихкоды в формате JSONB (NULL для товаров без вариантов)"
-      - name: article
-        description: "Артикул товара"
-      - name: weight
-        description: "Вес товара"
-      - name: volume
-        description: "Объём товара"
-      - name: uom
-        description: "Название единицы измерения"
-        tests: [not_null]
-      - name: depositor_name
-        description: "Название поклажедателя"
-      - name: depositor_inn
-        description: "ИНН поклажедателя"
-
-  - name: int_enrich__slots_extended
-    description: >
-      Справочник ячеек с денормализованными названиями склада и зоны.
-      Используется в витринах и Grafana вместо JOIN-ов к stg_slots + stg_zones + stg_stores.
-    columns:
-      - name: slot_id
-        description: "UUID ячейки"
-        tests: [unique, not_null]
-      - name: store_name
-        description: "Название склада"
-      - name: zone_name
-        description: "Название зоны (NULL если ячейка без зоны)"
-      - name: name
-        description: "Название ячейки"
-        tests: [not_null]
-      - name: updated
-        description: "Время последнего обновления ячейки"
-
-  - name: int_premart__operations_each
-    description: >
-      Операции с денормализованными атрибутами позиций, ячеек и контрагентов.
-      INNER JOIN на int_enrich__items_united_extended отфильтровывает услуги, наборы и прочие сущности МойСклад.
+      Операции с денормализованными атрибутами, нарастающими балансами и диагностикой ячеек.
+      Зерно: одна строка на операцию (agent × slot × item).
+      INNER JOIN на int_prep__items_united_enriched отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
       store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
-      Содержит разбивку quantity на real_in/real_out (supply/enter/demand/loss) и move_in/move_out (перемещения).
-      items_in_slot — кол-во различных товаров в ячейке на дату операции.
+      open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY agent, item, slot); операции без slot_id = 0.
+      open/close_total_balance — нарастающий остаток по товару у агента по всем ячейкам (PARTITION BY agent, item; move не учитывается).
+      slot_errors — диагностика аномалий: отрицательный остаток, несколько товаров в ячейке, расхождение с expected_bin_qty.
     columns:
       - name: item_id
         description: "UUID позиции"
       - name: slot_id
-        description: "UUID ячейки"
+        description: "UUID ячейки (NULL если операция без ячейки)"
       - name: store_id
         description: "UUID склада (из документа)"
       - name: agent_id
@@ -126,7 +22,7 @@ models:
       - name: depositor_id
         description: "UUID поклажедателя"
       - name: expected_bin_qty
-        description: "Кол-во единиц товара в одной ячейке"
+        description: "Ожидаемое кол-во товара в ячейке"
       - name: store_name
         description: "Название склада (из документа, не из ячейки)"
       - name: zone_name
@@ -154,6 +50,18 @@ models:
         description: "Приход от перемещений: quantity если doc_type = move и quantity > 0, иначе 0"
       - name: move_out
         description: "Расход от перемещений: quantity если doc_type = move и quantity < 0, иначе 0"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции (PARTITION BY agent, item, slot)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+      - name: open_total_balance
+        description: "Остаток товара у агента по всем ячейкам до операции (move не учитывается)"
+      - name: close_total_balance
+        description: "Остаток товара у агента по всем ячейкам после операции"
+      - name: items_in_slot
+        description: "Кол-во операций по данному товару в ячейке за день (PARTITION BY item_id, moment_day, slot_id)"
+      - name: slot_errors
+        description: "Диагностика: ERROR slot overdraft / WARNING slot has > 1 items / WARNING unexpected slot balance / NULL"
       - name: uom
         description: "Единица измерения"
       - name: item_name
@@ -170,27 +78,25 @@ models:
         description: "Вес"
       - name: volume
         description: "Объём"
-      - name: barcodes
-        description: "Штрихкоды"
       - name: agent_name
-        description: "Название контрагента (из документа)"
+        description: "Название контрагента"
       - name: agent_inn
         description: "ИНН контрагента"
       - name: depositor_name
         description: "Название поклажедателя"
       - name: depositor_inn
         description: "ИНН поклажедателя"
-      - name: items_in_slot
-        description: "Кол-во различных товаров в ячейке на дату операции (PARTITION BY item_id, moment_day, slot_id)"
 
-  - name: int_premart__balance_daily_atomic_grid
+  - name: int_balance__agent_slot_item_daily_spine
     description: >
-      Атомарная ежедневная сетка: слот × агент × товар × день.
-      Строит непрерывный ряд дат по каждой тройке зерна (agent, slot, item) от первой операции до сегодня.
-      Считает нарастающие балансы (slot и total) и флаг занятости is_used.
-      Финальный SELECT отдаёт только строки с is_used != 0 — дни без движений с нулевым остатком отброшены.
-      is_used: 1 — занято, 2 — ошибка данных (close_slot_balance < 0).
-      Обогащение атрибутами (агенты, ячейки, товары) — последний шаг, только на отфильтрованных строках.
+      Ежедневная сетка занятых ячеек с нарастающими балансами и флагом занятости.
+      Зерно: агент × склад × слот × товар × день (непрерывный ряд дат от первой операции до CURRENT_DATE).
+      store_id включён в зерно и store_name берётся из документа — гарантирует корректный склад
+      даже когда операция содержит склад без ячейки.
+      Строки с is_used = 0 (пустые ячейки без оборота) исключены из финального SELECT.
+      is_used = 1: товар присутствует (close > 0) либо полный оборот за день без остатка.
+      is_used = 2: ошибка данных — отрицательный остаток.
+      Обогащение атрибутами (агент, ячейка, товар) выполняется последним — только на отфильтрованных строках.
     columns:
       - name: agent_id
         description: "UUID агента"
@@ -246,19 +152,20 @@ models:
       - name: real_in
         description: "Приход по реальным операциям (supply, enter) за день"
       - name: move_in
-        description: "Приход от перемещений (move in) за день"
+        description: "Приход от перемещений за день"
       - name: real_out
         description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
       - name: move_out
-        description: "Расход от перемещений (move out) за день — отрицательное число"
+        description: "Расход от перемещений за день — отрицательное число"
 
-  - name: int_premart__balance_daily_by_slot_grid
+  - name: int_balance__slot_item_daily_spine
     description: >
-      Ежедневная сетка с зерном слот × товар × день (без агента).
-      Roll-up поверх int_premart__balance_daily_atomic_grid: суммирует движения по всем агентам,
+      Ежедневная сетка остатков товаров в ячейках без разбивки по агентам.
+      Зерно: слот × товар × день (непрерывный ряд дат).
+      Roll-up поверх int_balance__agent_slot_item_daily_spine: суммирует движения по всем агентам,
       пересчитывает балансы на новом зерне.
       open/close_total_balance — остаток товара по всем ячейкам (PARTITION BY item_id; агент не учитывается).
-      Атрибуты агента не включены — на этом уровне агент не имеет смысла.
+      Атрибуты агента и поклажедателя не включены.
     columns:
       - name: slot_id
         description: "UUID ячейки"

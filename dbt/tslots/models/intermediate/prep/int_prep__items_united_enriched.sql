@@ -1,11 +1,11 @@
 -- int_enrich__items_united_extended.sql — единый справочник позиций (товары и варианты).
 -- В МойСклад операции могут ссылаться как на product_id, так и на variant_id.
 -- Эта модель объединяет оба типа под общим item_id с денормализованными атрибутами:
--- uom, depositor, lot, mfg_date, barcodes — готово для JOIN в int_premart__operations_each.
+-- uom, depositor, lot, mfg_date — готово для JOIN в int_operations_with_balance__agent_slot_item.
 
 -- Часть 1: варианты (товары с партией и датой выработки).
 -- item_id = variant_id. name собирается как "товар (партия, дата)" для читаемости.
--- lot, mfg_date, barcodes — атрибуты варианта; uom, article, weight, volume — от родителя-product.
+-- lot, mfg_date — атрибуты варианта; uom, article, weight, volume — от родителя-product.
 SELECT
 	variant_id AS item_id
 	, p.depositor_id
@@ -15,7 +15,6 @@ SELECT
 	, p.name AS product
 	, v.lot
 	, v.mfg_date
-	, v.barcodes
 	, p.article
 	, p.weight
 	, p.volume
@@ -30,7 +29,7 @@ LEFT JOIN {{ ref('stg_moy_sklad__agents') }} a ON p.depositor_id=a.agent_id
 UNION ALL
 
 -- Часть 2: товары без вариантов.
--- item_id = product_id. lot/mfg_date/barcodes = NULL — у простых товаров их нет.
+-- item_id = product_id. lot/mfg_date = NULL — у простых товаров их нет.
 SELECT
 	product_id
 	, p.depositor_id
@@ -40,7 +39,6 @@ SELECT
 	, NULL  -- product (сам же и есть товар, нет родителя)
 	, NULL  -- lot
 	, NULL  -- mfg_date
-	, NULL  -- barcodes
 	, p.article
 	, p.weight
 	, p.volume
