@@ -36,7 +36,7 @@
 
 В МойСклад нет возможности задать условия для предупреждений об аномальных ситуациях — система не сигнализирует об отрицательном остатке в ячейке, о нескольких разных товарах в одной ячейке или о расхождении фактического остатка с ожидаемым.
 
-**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Lightdash.
+**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Metabase.
 
 ---
 
@@ -121,20 +121,20 @@ tslots отслеживает исключительно **движение то
 │                   Docker (локально или сервер)                   │
 │                                                                  │
 │  ┌──────────────┐     ┌─────────────────┐     ┌─────────────┐  │
-│  │   postgres   │◄────│ prefect-worker  │     │  lightdash  │  │
-│  │   :5432      │◄────│ prefect-server  │     │   :8080     │  │
+│  │   postgres   │◄────│ prefect-worker  │     │  metabase   │  │
+│  │   :5432      │◄────│ prefect-server  │     │   :3000     │  │
 │  └──────────────┘     │   :4200         │     └──────┬──────┘  │
 │         ▲             └─────────────────┘            │          │
 │         └────────────────────────────────────────────┘          │
 └─────────────────────────────────────────────────────────────────┘
           │                     │                    │
-    localhost:5432        localhost:4200        localhost:8080
-  (VS Code, DBeaver)     (Prefect UI)          (Lightdash UI)
+    localhost:5432        localhost:4200        localhost:3000
+  (VS Code, DBeaver)     (Prefect UI)          (Metabase UI)
 
 МойСклад API ──► prefect-worker (ingest) ──► postgres (layer_raw)
                  prefect-worker (dbt)    ──► postgres (bronze/silver/gold)
                                                       │
-                                                  lightdash
+                                                  metabase
 ```
 
 ### Контейнеры
@@ -144,19 +144,18 @@ tslots отслеживает исключительно **движение то
 | tslots-postgres | postgres:16-alpine | 5432 | База данных |
 | tslots-prefect-server | prefecthq/prefect:3-python3.11 | 4200 | UI и API Prefect |
 | tslots-prefect-worker | prefect/Dockerfile (custom) | — | Выполняет flow и dbt |
-| tslots-lightdash | lightdash/lightdash:latest | 8080 | BI-дашборды поверх dbt-моделей |
+| tslots-metabase | metabase/metabase:v0.58.13 | 3000 | BI-дашборды поверх PostgreSQL |
 
 ### Volumes и хранение данных
 
 | Что | Где хранится | `docker-compose down` | `docker-compose down -v` |
 |---|---|---|---|
 | Данные PostgreSQL | Docker volume `postgres_data` | Сохранятся | **Удалятся** |
-| Дашборды Lightdash | В PostgreSQL (`postgres_data`) | Сохранятся | **Удалятся** |
-| Кэш Lightdash | Docker volume `lightdash_volume` | Сохранятся | **Удалятся** |
+| Дашборды Metabase | В PostgreSQL (`postgres_data`) | Сохранятся | **Удалятся** |
 | Код и модели | `tslots/` (в git) | Сохранятся | Сохранятся |
 | Секреты | `.env` (не в git) | Сохранятся | Сохранятся |
 
-> **Важно:** Lightdash хранит все дашборды, чарты и сохранённые запросы в PostgreSQL, а не в файлах. `docker-compose down` без флага `-v` сохраняет всё состояние. При `down -v` потребуется повторить первоначальную настройку Lightdash.
+> **Важно:** Metabase хранит все дашборды, вопросы и пользователей в PostgreSQL, а не в файлах. `docker-compose down` без флага `-v` сохраняет всё состояние. При `down -v` потребуется повторить первоначальную настройку Metabase.
 
 ### Монтирование папок
 
@@ -164,12 +163,10 @@ tslots отслеживает исключительно **движение то
 Твой комп                          Контейнер
 ──────────────────────────────     ──────────────────────────────
 tslots/                      →     /app/                (prefect-worker)
-tslots/dbt/                  →     /usr/app/dbt/        (lightdash)
 Docker volume postgres_data  →     /var/lib/postgresql/data   (postgres)
-Docker volume lightdash_vol  →     /home/lightdash/.lightdash (lightdash)
 ```
 
-Ты редактируешь файлы в VS Code → prefect-worker и lightdash видят изменения сразу, без перезапуска.
+Ты редактируешь файлы в VS Code → prefect-worker видит изменения сразу, без перезапуска. Metabase монтирование не требует.
 
 ---
 
@@ -204,7 +201,7 @@ layer_gold.*           ← warehouse: warehouse__operations_with_balance,
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings
      ▼
-Lightdash дашборды
+Metabase дашборды
 ```
 
 ### Расписание
@@ -346,7 +343,6 @@ cp .env.example .env
 
 Открой `.env` и заполни:
 - `MS_TOKEN` — токен из МойСклад (Настройки → Безопасность → Токены)
-- `LIGHTDASH_SECRET` — любая случайная строка минимум 32 символа
 - Пароли PostgreSQL можно оставить как есть для локальной установки
 
 ### Шаг 3 — Запусти контейнеры
@@ -375,51 +371,31 @@ Prefect UI → http://localhost:4200 → Deployments → tslots_daily_deploy →
 Flow выполнит 4 шага: ingest → bronze → silver → gold.
 Следи за логами: Flow Runs → последний запуск → Logs.
 
-### Шаг 5 — Настрой Lightdash (первый раз)
+### Шаг 5 — Настрой Metabase (первый раз)
 
-Открой http://localhost:8080
+Открой http://localhost:3000
 
 #### 5.1 — Аккаунт и организация
 
-Заполни имя, email, пароль и название организации.
+Выбери язык → заполни имя, email, пароль и название организации.
 
 > Эти данные хранятся только в локальной PostgreSQL, никуда не отправляются — можно вводить любые, в том числе несуществующие.
 
-Способ подключения — выбери **Manually**.
+#### 5.2 — Подключение к PostgreSQL
 
-#### 5.2 — Подключение к PostgreSQL (Warehouse connection)
-
-Все значения берутся из `.env`:
+Выбери тип базы данных **PostgreSQL**, затем заполни:
 
 | Поле | Значение |
 |---|---|
-| Host | `DB_HOST` из `.env` |
-| User | `DB_USER` из `.env` |
-| Password | `DB_PASSWORD` из `.env` |
-| DB name | `DB_NAME` из `.env` |
+| Host | `postgres` |
+| Port | `5432` |
+| Database name | значение `DB_NAME` из `.env` |
+| Username | значение `DB_USER` из `.env` |
+| Password | значение `DB_PASSWORD` из `.env` |
 
-Раскрой **Advanced configuration options** → **SSL mode: `disable`**
+Нажми **Test connection** — должно появиться зелёное "Connection looks good!". Затем **Save**.
 
-> SSL отключается потому что Lightdash и PostgreSQL находятся в одной внутренней Docker-сети и общаются напрямую — шифровать внутренний трафик не нужно. PostgreSQL контейнер по умолчанию не настроен на SSL, поэтому попытка подключиться с SSL вызовет ошибку.
-
-#### 5.3 — Подключение к dbt (dbt connection)
-
-| Поле | Значение |
-|---|---|
-| Type | `dbt local server` |
-| dbt version | `v1.10` |
-| Target name | оставь пустым — подхватится из `profiles.yml` |
-| Schema | `layer_gold` |
-
-> Поле Schema — это схема по умолчанию для новых запросов в Lightdash. Указываем `layer_gold` потому что там находятся финальные витрины (marts) — данные которые используются для отчётов. Модели из других схем (silver, bronze) тоже будут доступны через dbt-манифест.
-
-Нажми **Test & compile project** — Lightdash запустит `dbt compile` и прочитает все модели из проекта.
-
-#### 5.4 — Выбор моделей для проекта
-
-После компиляции Lightdash покажет опции для включения в проект dbt-моделей. Выбери какие из них будут доступны в проекте для построения чартов и дашбордов.
-
-> Это однократная настройка. При последующих `docker-compose up` Lightdash стартует сразу без мастера — состояние хранится в PostgreSQL.
+> Это однократная настройка. При последующих `docker-compose up` Metabase стартует сразу без мастера — состояние хранится в PostgreSQL.
 >
 > `docker-compose down` без флага `-v` сохраняет всё состояние. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
 
@@ -429,18 +405,13 @@ Flow выполнит 4 шага: ingest → bronze → silver → gold.
 
 Процедура идентична локальной. Отличия:
 
-**`.env`** — боевые пароли, токены и уникальный `LIGHTDASH_SECRET`.
+**`.env`** — боевые пароли и токены.
 
 **Адреса** — вместо `localhost` используй IP сервера:
 - Prefect UI: `http://<IP>:4200`
-- Lightdash: `http://<IP>:8080`
+- Metabase: `http://<IP>:3000`
 
-Также обнови `SITE_URL` в `.env` (если добавишь его отдельной переменной) или в `docker-compose.yml`:
-```yaml
-SITE_URL: http://<IP>:8080
-```
-
-**Firewall** — открой порты 4200 и 8080.
+**Firewall** — открой порты 4200 и 3000.
 
 ```bash
 git clone <url репозитория>
@@ -463,7 +434,7 @@ docker-compose ps
 ```bash
 docker-compose logs -f prefect-worker
 docker-compose logs -f postgres
-docker-compose logs -f lightdash
+docker-compose logs -f metabase
 ```
 
 ### Остановить (данные сохранятся)
@@ -508,7 +479,7 @@ docker exec -it tslots-prefect-worker bash -c "
 ```bash
 docker exec -it tslots-prefect-worker bash
 docker exec -it tslots-postgres bash
-docker exec -it tslots-lightdash bash
+docker exec -it tslots-metabase bash
 ```
 
 ---
@@ -519,8 +490,7 @@ docker exec -it tslots-lightdash bash
 
 | Переменная | Где используется |
 |---|---|
-| `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt, Lightdash |
-| `LIGHTDASH_SECRET` | Подпись JWT-токенов Lightdash |
+| `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt, Metabase |
 | `MS_TOKEN` | МойСклад API |
 
 ### Смена MS_TOKEN
@@ -529,14 +499,6 @@ docker exec -it tslots-lightdash bash
 2. Перезапусти worker:
 ```bash
 docker-compose restart prefect-worker
-```
-
-### Смена LIGHTDASH_SECRET
-
-1. Измени значение в `.env`
-2. Перезапусти Lightdash:
-```bash
-docker-compose restart lightdash
 ```
 
 ### Смена DB_PASSWORD
@@ -550,5 +512,5 @@ docker exec -it tslots-postgres psql -U tslots -d tslots -c "
 2. Обнови `.env`
 3. Перезапусти зависимые контейнеры:
 ```bash
-docker-compose restart prefect-server prefect-worker lightdash
+docker-compose restart prefect-server prefect-worker metabase
 ```

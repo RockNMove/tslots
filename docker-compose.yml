@@ -101,32 +101,31 @@ services:
       "
 
   # ---------------------------------------------------------------------------
-  # Lightdash — BI поверх dbt-моделей
+  # Metabase — BI-дашборды поверх PostgreSQL
   # ---------------------------------------------------------------------------
-  lightdash:
-    image: lightdash/lightdash:0.2772.4
-    container_name: tslots-lightdash
+  metabase:
+    image: metabase/metabase:v0.58.13
+    container_name: tslots-metabase
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # Lightdash хранит своё состояние (дашборды, пользователей, чарты) в PostgreSQL.
-      PGHOST:              postgres
-      PGPORT:              5432
-      PGUSER:              ${DB_USER}
-      PGPASSWORD:          ${DB_PASSWORD}
-      PGDATABASE:          ${DB_NAME}
-      LIGHTDASH_SECRET:    ${LIGHTDASH_SECRET}
-      SITE_URL:            http://localhost:8080
-      LIGHTDASH_LOG_LEVEL: warn
-    volumes:
-      # dbt-проект монтируется — Lightdash читает модели и метаданные напрямую.
-      - ./dbt/tslots:/usr/app/dbt
-      - lightdash_volume:/home/lightdash/.lightdash
+      # Metabase хранит своё состояние (дашборды, вопросы, пользователей) в PostgreSQL.
+      MB_DB_TYPE:   postgres
+      MB_DB_HOST:   postgres
+      MB_DB_PORT:   5432
+      MB_DB_DBNAME: ${DB_NAME}
+      MB_DB_USER:   ${DB_USER}
+      MB_DB_PASS:   ${DB_PASSWORD}
     ports:
-      - "8080:8080"
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   postgres_data:
-  lightdash_volume:
