@@ -49,7 +49,7 @@ def get_max_updated(table: str) -> str | None:
     try:
         with ENGINE.connect() as conn:
             row = conn.execute(
-                text(f"SELECT MAX(updated) FROM layer_bronze.{table}")
+                text(f"SELECT MAX(updated) FROM bronze.{table}")
             ).fetchone()
         if row and row[0] is not None:
             return (row[0] + timedelta(milliseconds=1)).isoformat(sep=' ', timespec='milliseconds')
@@ -121,6 +121,10 @@ def ingest():
     if not records:
         logger.warning("Нет данных от API — пропускаем запись в БД")
         return
+
+    with ENGINE.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS layer_raw"))
+        conn.commit()
 
     pd.DataFrame(records).to_sql(
         "raw", ENGINE,

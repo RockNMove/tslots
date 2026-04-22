@@ -142,7 +142,8 @@ tslots отслеживает исключительно **движение то
 | Контейнер | Образ | Порт | Роль |
 |---|---|---|---|
 | tslots-postgres | postgres:16-alpine | 5432 | База данных |
-| tslots-prefect-server | prefecthq/prefect:3-python3.11 | 4200 | UI и API Prefect |
+| tslots-prefect-server | prefecthq/prefect:3-python3.11 | — | UI и API Prefect (только внутри Docker-сети) |
+| tslots-nginx | nginx:stable-alpine (custom) | 4200 | Basic Auth перед Prefect UI |
 | tslots-prefect-worker | prefect/Dockerfile (custom) | — | Выполняет flow и dbt |
 | tslots-metabase | metabase/metabase:v0.58.13 | 3000 | BI-дашборды поверх PostgreSQL |
 
@@ -181,20 +182,20 @@ Docker volume postgres_data  →     /var/lib/postgresql/data   (postgres)
 layer_raw.raw          ← одна таблица: entity + raw_json (JSONB)
      │
      ▼  [2] dbt run --select staging
-layer_bronze.*         ← stg_moy_sklad__stores, stg_moy_sklad__zones,
+bronze.*               ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__slots,  stg_moy_sklad__uoms,
      │                    stg_moy_sklad__products, stg_moy_sklad__variants,
      │                    stg_moy_sklad__agents,
      │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
      │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
      ▼  [3] dbt run --select intermediate
-layer_silver.*         ← prep: int_prep__operations_united,
+silver.*               ← prep: int_prep__operations_united,
      │                         int_prep__items_united_enriched, int_prep__slots_enriched
      │                    int_operations_with_balance__agent_slot_item,
      │                    int_balance__agent_slot_item_daily_spine,
      │                    int_balance__slot_item_daily_spine
      ▼  [4] dbt run --select marts
-layer_gold.*           ← warehouse: warehouse__operations_with_balance,
+gold.*                 ← warehouse: warehouse__operations_with_balance,
      │                              warehouse__balance_daily,
      │                              warehouse__balance_daily_no_agent
      │                    partners: partners__nrb_stock_movements
@@ -225,7 +226,7 @@ Metabase дашборды
 
 ## Модели dbt
 
-### layer_bronze — staging
+### bronze — staging
 
 | Модель | Источник в raw | Ключ | Описание |
 |---|---|---|---|
@@ -244,7 +245,7 @@ Metabase дашборды
 
 Все операционные модели — инкрементальные (MERGE по unique_key). Ключ MERGE использует `position_id` (UUID позиции из МойСклад) — позволяет корректно обрабатывать документы где один товар стоит в нескольких строках. Остальные модели — таблицы.
 
-### layer_silver — intermediate
+### silver — intermediate
 
 | Модель | Описание |
 |---|---|
@@ -257,7 +258,7 @@ Metabase дашборды
 
 Все модели — таблицы.
 
-### layer_gold — marts
+### gold — marts
 
 | Папка | Модель | Источник | Описание |
 |---|---|---|---|
@@ -266,7 +267,7 @@ Metabase дашборды
 | warehouse | warehouse__balance_daily_no_agent | int_balance__slot_item_daily_spine | Остаток товара в ячейке по дням без разбивки по агенту, только ненулевые строки |
 | partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
 | focus | focus__slots_used_monthly | int_balance__agent_slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
-| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Lightdash |
+| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Metabase |
 
 Все модели — таблицы.
 
@@ -282,8 +283,9 @@ tslots/
 ├── docker-compose.yml         ← вся инфраструктура
 ├── README.md
 │
-├── init_db/
-│   └── 01_raw_schema.sql      ← создаёт схему layer_raw при первом старте PostgreSQL
+├── nginx/
+│   ├── Dockerfile             ← образ nginx с apache2-utils для htpasswd
+│   └── nginx.conf             ← Basic Auth перед Prefect UI
 │
 ├── prefect/
 │   ├── Dockerfile             ← образ worker: prefect + dbt + зависимости
@@ -295,10 +297,12 @@ tslots/
 │   └── tslots/
 │       ├── dbt_project.yml    ← конфиг проекта, схемы слоёв
 │       ├── profiles.yml       ← подключение к PostgreSQL
+│       ├── macros/
+│       │   └── generate_schema_name.sql  ← схемы без префиксов: bronze/silver/gold
 │       └── models/
 │           ├── staging/
-│           │   └── moy_sklad/   ← layer_bronze: stg_moy_sklad__*
-│           ├── intermediate/    ← layer_silver:
+│           │   └── moy_sklad/   ← bronze: stg_moy_sklad__*
+│           ├── intermediate/    ← silver:
 │           │   ├── prep/           int_prep__operations_united, int_prep__items_united_enriched,
 │           │   │                   int_prep__slots_enriched
 │           │   └── (корень)        int_operations_with_balance__agent_slot_item,
@@ -312,78 +316,104 @@ tslots/
 │               └── focus/       ← focus__slots_used_monthly,
 │                                   focus__errors_warnings
 │
-└── test_notebooks/            ← Jupyter для исследования данных
+└── test_notebooks/
+    └── get_jsons.py           ← отладка: запрашивает все сущности API и сохраняет JSON в temp/raw_json/
 ```
 
 ---
 
 ## Установка с нуля
 
-### Требования
+### Шаг 1 — Установи Docker
 
-- Docker и Docker Compose
-- Git
+**Windows** — установи [Docker Desktop](https://www.docker.com/products/docker-desktop/). После установки запусти его и убедись что в трее появился значок Docker (он должен быть запущен перед любой командой ниже).
 
-### Шаг 1 — Клонируй репозиторий
+**Linux (сервер Ubuntu):**
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+### Шаг 2 — Получи код
+
+Склонируй репозиторий в удобную папку. На сервере рекомендуем `/opt/tslots`:
 
 ```bash
+# Локально (Windows — выполняй в терминале рядом с Docker Desktop):
+# Сначала перейди в папку где хочешь разместить проект, например:
+cd C:\Users\<имя>\Desktop
+git clone <url репозитория>
+cd tslots
+
+# На сервере:
+cd /opt
 git clone <url репозитория>
 cd tslots
 ```
 
-### Шаг 2 — Создай .env
+### Шаг 3 — Создай и заполни .env
 
 ```bash
-# Windows:
+# Локально (Windows):
 copy .env.example .env
 
-# Linux / Mac:
+# Linux / Mac / сервер:
 cp .env.example .env
 ```
 
-Открой `.env` и заполни:
-- `MS_TOKEN` — токен из МойСклад (Настройки → Безопасность → Токены)
-- Пароли PostgreSQL можно оставить как есть для локальной установки
+**На сервере** отредактируй файл через nano:
+```bash
+nano .env
+```
+Управление в nano: редактируй текст как обычно → `Ctrl+O` сохранить → `Enter` подтвердить → `Ctrl+X` выйти.
 
-### Шаг 3 — Запусти контейнеры
+Что заполнить:
+
+| Переменная | Локально | На сервере |
+|---|---|---|
+| `MS_TOKEN` | токен из МойСклад | токен из МойСклад |
+| `DB_USER` | можно оставить `admin` | можно оставить `admin` |
+| `DB_PASSWORD` | можно оставить `admin` | надёжный пароль |
+| `DB_NAME` | можно оставить `tslots` | можно оставить `tslots` |
+| `SERVER_HOST` | `localhost` | внешний IP или домен сервера |
+| `PREFECT_USER` | придумай логин | придумай логин |
+| `PREFECT_PASSWORD` | придумай пароль | надёжный пароль |
+
+Токен МойСклад: Настройки → Безопасность → Токены доступа.
+
+### Шаг 4 — Открой порты (только на сервере)
+
+```bash
+ufw allow 4200   # Prefect UI
+ufw allow 3000   # Metabase
+ufw allow 5432   # PostgreSQL (DBeaver и другие SQL-клиенты)
+```
+
+Если сервер в облаке (Hetzner, DigitalOcean, Yandex Cloud) — дополнительно открой эти же порты в панели управления облака в настройках сети/файрвола.
+
+### Шаг 5 — Запусти контейнеры
 
 ```bash
 docker-compose up -d --build
 ```
 
-`--build` нужен при первом запуске — собирает образ prefect-worker.
-При последующих запусках достаточно `docker-compose up -d`.
-
-При первом запуске PostgreSQL автоматически выполнит `init_db/01_raw_schema.sql`
-и создаст схему `layer_raw` — ничего делать вручную не нужно.
+`--build` нужен при первом запуске — собирает образ prefect-worker. При последующих запусках достаточно `docker-compose up -d`.
 
 Проверь что все контейнеры запустились:
 ```bash
 docker-compose ps
 ```
 
-Все четыре должны быть в статусе `running`.
+Все пять должны быть в статусе `running`: postgres, prefect-server, prefect-worker, nginx, metabase.
 
-### Шаг 4 — Запусти pipeline
+### Шаг 6 — Настрой Metabase (первый раз)
 
-Prefect UI → http://localhost:4200 → Deployments → tslots_daily_deploy → Run → Quick Run
+Открой в браузере:
+- Локально: `http://localhost:3000`
+- На сервере: `http://<IP>:3000`
 
-Flow выполнит 4 шага: ingest → bronze → silver → gold.
-Следи за логами: Flow Runs → последний запуск → Logs.
+Выбери язык → заполни имя, email, пароль и название организации (данные хранятся только локально, можно вводить любые).
 
-### Шаг 5 — Настрой Metabase (первый раз)
-
-Открой http://localhost:3000
-
-#### 5.1 — Аккаунт и организация
-
-Выбери язык → заполни имя, email, пароль и название организации.
-
-> Эти данные хранятся только в локальной PostgreSQL, никуда не отправляются — можно вводить любые, в том числе несуществующие.
-
-#### 5.2 — Подключение к PostgreSQL
-
-Выбери тип базы данных **PostgreSQL**, затем заполни:
+Затем подключи PostgreSQL:
 
 | Поле | Значение |
 |---|---|
@@ -393,33 +423,31 @@ Flow выполнит 4 шага: ingest → bronze → silver → gold.
 | Username | значение `DB_USER` из `.env` |
 | Password | значение `DB_PASSWORD` из `.env` |
 
-Нажми **Test connection** — должно появиться зелёное "Connection looks good!". Затем **Save**.
+Нажми **Test connection** → **Save**.
 
-> Это однократная настройка. При последующих `docker-compose up` Metabase стартует сразу без мастера — состояние хранится в PostgreSQL.
->
-> `docker-compose down` без флага `-v` сохраняет всё состояние. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
+> Это однократная настройка — состояние хранится в PostgreSQL. `docker-compose down` без `-v` сохраняет всё. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
 
----
+### Шаг 7 — Запусти pipeline
 
-## Установка на сервере
+Открой Prefect UI:
+- Локально: `http://localhost:4200`
+- На сервере: `http://<IP>:4200`
 
-Процедура идентична локальной. Отличия:
+Введи логин и пароль из `.env` (`PREFECT_USER` / `PREFECT_PASSWORD`).
 
-**`.env`** — боевые пароли и токены.
+Deployments → tslots_daily_deploy → Run → Quick Run.
 
-**Адреса** — вместо `localhost` используй IP сервера:
-- Prefect UI: `http://<IP>:4200`
-- Metabase: `http://<IP>:3000`
+Flow выполнит 4 шага: ingest → bronze → silver → gold. Следи за логами: Flow Runs → последний запуск → Logs.
 
-**Firewall** — открой порты 4200 и 3000.
+### Подключение к PostgreSQL через DBeaver
 
-```bash
-git clone <url репозитория>
-cd tslots
-cp .env.example .env
-nano .env
-docker-compose up -d --build
-```
+| Поле | Значение |
+|---|---|
+| Host | `localhost` (локально) или IP сервера |
+| Port | `5432` |
+| Database | значение `DB_NAME` из `.env` |
+| Username | значение `DB_USER` из `.env` |
+| Password | значение `DB_PASSWORD` из `.env` |
 
 ---
 
@@ -442,7 +470,7 @@ docker-compose logs -f metabase
 docker-compose down
 ```
 
-### Удалить всё включая данные БД и дашборды Lightdash
+### Удалить всё включая данные БД и дашборды Metabase
 ```bash
 docker-compose down -v
 ```

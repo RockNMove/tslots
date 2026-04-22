@@ -11,12 +11,12 @@ tslots:
       # Внутри Docker используем имя сервиса postgres (не localhost).
       host:     "{{ env_var('DBT_DB_HOST',     'localhost') }}"
       port:     5432
-      user:     "{{ env_var('DBT_DB_USER',     'tslots') }}"
-      password: "{{ env_var('DBT_DB_PASSWORD', 'tslots') }}"
+      user:     "{{ env_var('DBT_DB_USER',     'admin') }}"
+      password: "{{ env_var('DBT_DB_PASSWORD', 'admin') }}"
       dbname:   "{{ env_var('DBT_DB_NAME',     'tslots') }}"
       # Базовая схема — переопределяется макросом generate_schema_name.
       schema:   layer
       threads:  4
       connect_timeout: 10
       # Порядок поиска схем при запросах без явного указания схемы.
-      search_path: "layer_raw,layer_bronze,layer_silver,layer_gold,public"
+      search_path: "layer_raw,bronze,silver,gold,public"
