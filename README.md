@@ -123,13 +123,18 @@ tslots отслеживает исключительно **движение то
 │  ┌──────────────┐     ┌─────────────────┐     ┌─────────────┐  │
 │  │   postgres   │◄────│ prefect-worker  │     │  metabase   │  │
 │  │   :5432      │◄────│ prefect-server  │     │   :3000     │  │
-│  └──────────────┘     │   :4200         │     └──────┬──────┘  │
-│         ▲             └─────────────────┘            │          │
+│  └──────────────┘     │   (internal)    │     └──────┬──────┘  │
+│         ▲             └────────┬────────┘            │          │
+│         │                     ▼                      │          │
+│         │              ┌─────────────┐               │          │
+│         │              │    nginx    │               │          │
+│         │              │   :4200     │               │          │
+│         │              └─────────────┘               │          │
 │         └────────────────────────────────────────────┘          │
 └─────────────────────────────────────────────────────────────────┘
           │                     │                    │
     localhost:5432        localhost:4200        localhost:3000
-  (VS Code, DBeaver)     (Prefect UI)          (Metabase UI)
+  (VS Code, DBeaver)   (Prefect UI, Basic Auth)  (Metabase UI)
 
 МойСклад API ──► prefect-worker (ingest) ──► postgres (layer_raw)
                  prefect-worker (dbt)    ──► postgres (bronze/silver/gold)
@@ -427,6 +432,14 @@ docker-compose ps
 
 > Это однократная настройка — состояние хранится в PostgreSQL. `docker-compose down` без `-v` сохраняет всё. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
 
+#### Добавление пользователей
+
+Кто прошёл мастер настройки — тот администратор. Самостоятельная регистрация закрыта. Чтобы дать доступ другому человеку:
+
+Settings → People → Invite someone → введи email и имя → Save.
+
+Письмо **не отправляется** — передай логин (email) и пароль вручную. Пользователь сможет сменить пароль после входа.
+
 ### Шаг 7 — Запусти pipeline
 
 Открой Prefect UI:
@@ -451,6 +464,72 @@ Flow выполнит 4 шага: ingest → bronze → silver → gold. Сле�
 
 ---
 
+## CI/CD — автодеплой через GitHub Actions
+
+При каждом `git push` в ветку `main` GitHub автоматически заходит на сервер и применяет изменения.
+
+### Как это работает
+
+```
+git push → GitHub → Actions runner (Ubuntu VM) → SSH → сервер → git pull + docker-compose up -d
+```
+
+1. Ты пушишь в `main` — GitHub видит событие и запускает workflow
+2. GitHub поднимает чистую виртуальную машину (runner)
+3. Runner берёт SSH-ключ из зашифрованного хранилища Secrets и подключается к серверу
+4. На сервере выполняется `git pull` и `docker-compose up -d`
+5. Runner уничтожается — следующий деплой получит чистую машину
+
+Секреты (ключ, IP, пользователь) хранятся только на стороне GitHub, в коде не появляются.
+
+### Настройка (один раз)
+
+**1. На сервере** — сгенерируй SSH-ключ специально для GitHub Actions:
+```bash
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions
+cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+cat ~/.ssh/github_actions  # скопируй вывод — это приватный ключ
+```
+
+**2. В GitHub** — добавь Secrets: репозиторий → Settings → Secrets and variables → Actions → New repository secret:
+
+| Secret | Значение |
+|---|---|
+| `SSH_PRIVATE_KEY` | приватный ключ из шага 1 (весь текст включая `-----BEGIN...`) |
+| `SSH_HOST` | IP сервера |
+| `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
+
+**3. Создай файл** `.github/workflows/deploy.yml` в репозитории:
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/tslots
+            git pull
+            docker-compose up -d --build
+```
+
+После этого каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска видно в GitHub → Actions.
+
+> `.env` не в git — изменения в нём вносятся на сервере вручную через `nano /opt/tslots/.env` и применяются отдельным `docker-compose up -d`.
+
+---
+
 ## Полезные команды
 
 ### Статус контейнеров
@@ -463,6 +542,7 @@ docker-compose ps
 docker-compose logs -f prefect-worker
 docker-compose logs -f postgres
 docker-compose logs -f metabase
+docker-compose logs -f nginx
 ```
 
 ### Остановить (данные сохранятся)
@@ -508,6 +588,7 @@ docker exec -it tslots-prefect-worker bash -c "
 docker exec -it tslots-prefect-worker bash
 docker exec -it tslots-postgres bash
 docker exec -it tslots-metabase bash
+docker exec -it tslots-nginx sh
 ```
 
 ---
@@ -520,6 +601,9 @@ docker exec -it tslots-metabase bash
 |---|---|
 | `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt, Metabase |
 | `MS_TOKEN` | МойСклад API |
+| `PREFECT_USER` | Basic Auth в Nginx перед Prefect UI |
+| `PREFECT_PASSWORD` | Basic Auth в Nginx перед Prefect UI |
+| `SERVER_HOST` | Prefect UI — адрес API для браузера (`localhost` локально, IP сервера на сервере) |
 
 ### Смена MS_TOKEN
 
@@ -533,8 +617,8 @@ docker-compose restart prefect-worker
 
 1. Смени пароль внутри PostgreSQL:
 ```bash
-docker exec -it tslots-postgres psql -U tslots -d tslots -c "
-  ALTER USER tslots PASSWORD 'новый_пароль';
+docker exec -it tslots-postgres psql -U admin -d tslots -c "
+  ALTER USER admin PASSWORD 'новый_пароль';
 "
 ```
 2. Обнови `.env`
