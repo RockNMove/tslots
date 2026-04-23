@@ -4,7 +4,8 @@
 -- Материализована как view: вычисления уже выполнены в intermediate (silver), дублировать таблицу нет смысла.
 {{ config(materialized='view') }}
 SELECT
-	agent_name
+	id
+	, agent_name
 	, depositor_name
 	, item_name
 	, store_name

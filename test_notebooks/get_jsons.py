@@ -35,9 +35,13 @@ params_variant = {
 params_agent = {
     "filter": f"updated>={START_TIMESTAMP};updated<{STOP_TIMESTAMP}",
     "limit": LIMIT}
+# params_in_out = {
+#     "expand": "positions.slot,positions.assortment,agent,store",
+#     "filter": f"updated>={START_TIMESTAMP};updated<{STOP_TIMESTAMP};applicable=true",
+#     "limit": LIMIT}
 params_in_out = {
     "expand": "positions.slot,positions.assortment,agent,store",
-    "filter": f"updated>={START_TIMESTAMP};updated<{STOP_TIMESTAMP};applicable=true",
+    "filter": f"updated>={START_TIMESTAMP};updated<{STOP_TIMESTAMP}",
     "limit": LIMIT}
 params_move = {
     "expand": "positions.targetSlot,positions.sourceSlot,positions.assortment",
@@ -47,6 +51,7 @@ params_move = {
 # --- Запросы к API ---
 
 BASE = 'https://api.moysklad.ru/api/remap/1.2/entity'
+
 
 def get(endpoint, params):
     try:
@@ -63,16 +68,17 @@ def get(endpoint, params):
         print(f'[{endpoint}] нет соединения — проверь интернет')
         raise
 
-store_raw   = get('store',        params_store)
-uom_raw     = get('uom',          params_uom)
+
+store_raw = get('store',        params_store)
+uom_raw = get('uom',          params_uom)
 product_raw = get('product',      params_product)
 variant_raw = get('variant',      params_variant)
-agent_raw   = get('counterparty', params_agent)
-demand_raw  = get('demand',       params_in_out)
-supply_raw  = get('supply',       params_in_out)
-loss_raw    = get('loss',         params_in_out)
-enter_raw   = get('enter',        params_in_out)
-move_raw    = get('move',         params_move)
+agent_raw = get('counterparty', params_agent)
+demand_raw = get('demand',       params_in_out)
+supply_raw = get('supply',       params_in_out)
+loss_raw = get('loss',         params_in_out)
+enter_raw = get('enter',        params_in_out)
+move_raw = get('move',         params_move)
 
 # --- Сохранение в temp/raw_json ---
 

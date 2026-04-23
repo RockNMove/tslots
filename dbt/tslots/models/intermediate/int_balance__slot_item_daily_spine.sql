@@ -45,14 +45,14 @@ SELECT
         SUM(real_in+real_out) OVER(
             PARTITION BY item_id
             ORDER BY moment_day
-            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL '1 day' PRECEDING
         ),
     0) AS open_total_balance
     , COALESCE(
         SUM(real_in+real_out) OVER(
             PARTITION BY item_id
             ORDER BY moment_day
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ),
     0) AS close_total_balance
 FROM daily_by_slot

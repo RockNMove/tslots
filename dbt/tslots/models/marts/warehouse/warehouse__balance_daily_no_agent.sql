@@ -2,7 +2,8 @@
 -- Строится на основе int_balance__slot_item_daily_spine.
 -- Выводит только строки где close_slot_balance != 0.
 SELECT
-    store_name
+    id
+    , store_name
     , moment_day
     , item_name
     , slot_name

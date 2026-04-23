@@ -3,26 +3,29 @@
 -- INNER JOIN на int_prep__items_united_enriched отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
 -- store_name берётся из документа (через store_id), а не из ячейки —
 -- это позволяет корректно показывать склад даже когда ячейка не указана.
+-- Операции без slot_id (ячейка не указана в документе МойСклад) получают slot_id = 'off_slot',
+-- slot_name = 'off_slot', zone_name = 'off_slot'. Они образуют отдельную партицию и не влияют
+-- на остатки реальных слотов. В поле slot_errors такие строки получают WARNING: Out-of-slot operation.
 -- open/close_total_balance — нарастающий остаток по товару (item_id), все склады вместе; move не учитывается.
--- open/close_slot_balance  — нарастающий остаток по товару в ячейке (item_id, slot_id); операции без slot_id не учитываются.
+-- open/close_slot_balance  — нарастающий остаток по товару в ячейке (item_id, slot_id); off_slot считается отдельно.
 -- items_in_slot            — кол-во операций по одному товару в ячейке за день (PARTITION BY item_id, date, slot_id).
 WITH
 	tab AS(
 		SELECT
 			o.item_id
-			, o.slot_id
+			, CASE WHEN o.slot_id is NULL then 'off_slot' else sz.slot_id END AS slot_id
 			, s.store_id
 			, o.agent_id
 			, i.depositor_id
 			, i.expected_bin_qty
 			, s.name AS store_name
-			, sz.zone_name
+			, CASE WHEN sz.zone_name is NULL then 'off_slot' else sz.zone_name END AS zone_name
 			, o.doc_type
 			, o.number AS doc_name
 			, o.moment
 			, o.moment::date AS moment_day
 			, o.op_type 
-			, sz.slot_name
+			, CASE WHEN sz.slot_name is NULL then 'off_slot' else sz.slot_name END AS slot_name
 			, o.quantity
 			, CASE WHEN o.doc_type != 'move' AND o.quantity > 0 THEN o.quantity ELSE 0 END AS real_in
 			, CASE WHEN o.doc_type != 'move' AND o.quantity < 0 THEN o.quantity ELSE 0 END AS real_out
@@ -51,14 +54,14 @@ WITH
 		SELECT
 		*
 		, COALESCE(
-			SUM(CASE WHEN slot_id is NULL then 0 else quantity END) OVER(
+			SUM(quantity) OVER(
 				PARTITION BY store_id, agent_id, item_id, slot_id
 				ORDER BY moment
 				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 			),
 		0) AS open_slot_balance
 		, COALESCE(
-			SUM(CASE WHEN slot_id is NULL then 0 else quantity END) OVER(
+			SUM(quantity) OVER(
 				PARTITION BY store_id, agent_id, item_id, slot_id
 				ORDER BY moment
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
@@ -82,10 +85,11 @@ WITH
 	)
 SELECT
 *
-, CASE 
-	WHEN close_slot_balance<0 THEN 'ERROR: slot overdraft'
-	WHEN items_in_slot >1 THEN 'WARNING: slot has > 1 items'
-	WHEN close_slot_balance != expected_bin_qty THEN 'WARNING: unexpected slot balance'
-	ELSE NULL 
-END AS slot_errors
+, CONCAT_WS(
+	' | '
+	, CASE WHEN close_slot_balance<0 THEN 'ERROR: slot overdraft' ELSE NULL END
+	, CASE WHEN items_in_slot >1 THEN 'WARNING: slot has > 1 items' ELSE NULL END
+	, CASE WHEN close_slot_balance != expected_bin_qty THEN 'WARNING: unexpected slot balance' ELSE NULL END
+	, CASE WHEN slot_id = 'off_slot' THEN 'WARNING: Out-of-slot operation' ELSE NULL END
+) AS slot_errors
 FROM tab_with_balance

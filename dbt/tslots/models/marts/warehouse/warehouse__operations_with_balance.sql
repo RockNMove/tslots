@@ -4,7 +4,8 @@
 -- slot_errors — текстовый флаг проблем: отрицательный остаток, несколько товаров, неожиданный остаток.
 
 SELECT
-	agent_name
+	id
+	, agent_name
 	, depositor_name
 	, item_name
 	, store_name

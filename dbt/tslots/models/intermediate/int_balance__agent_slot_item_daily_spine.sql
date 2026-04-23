@@ -78,14 +78,14 @@ WITH
 				SUM(da.real_in+da.real_out) OVER(
 					PARTITION BY g.agent_id, g.item_id
 					ORDER BY g.moment_day
-					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+					RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL '1 day' PRECEDING
 				),
 			0) AS open_total_balance
 			, COALESCE(
 				SUM(da.real_in+da.real_out) OVER(
 					PARTITION BY g.agent_id, g.item_id
 					ORDER BY g.moment_day
-					ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+					RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 				),
 			0) AS close_total_balance
             , COALESCE(da.real_in,  0) AS real_in
@@ -147,6 +147,7 @@ SELECT
     , b.move_in
     , b.real_out
     , b.move_out
+    , b.is_used
 FROM daily_with_flag b
 LEFT JOIN {{ ref('stg_moy_sklad__agents') }}            a    ON b.agent_id = a.agent_id
 LEFT JOIN {{ ref('int_prep__slots_and_zones') }}        sz   ON b.slot_id = sz.slot_id
