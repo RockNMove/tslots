@@ -27,4 +27,4 @@ SELECT
 	, lot
 	, mfg_date
 FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
-ORDER BY  agent_name, depositor_name, item_name, store_name, slot_name, moment_day
+ORDER BY  agent_name, item_name, store_name, slot_name, moment_day

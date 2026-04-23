@@ -16,3 +16,4 @@ SELECT
 	, depositor_name
 FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
 WHERE slot_errors IS NOT NULL
+ORDER BY slot_errors, moment_day, slot_name
