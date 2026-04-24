@@ -14,7 +14,7 @@ models:
       - name: item_id
         description: "UUID позиции"
       - name: slot_id
-        description: "UUID ячейки (NULL если операция без ячейки)"
+        description: "UUID ячейки; 'off_slot' если ячейка не указана в документе"
       - name: store_id
         description: "UUID склада (из документа)"
       - name: agent_id

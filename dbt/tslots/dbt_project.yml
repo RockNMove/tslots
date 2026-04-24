@@ -18,7 +18,6 @@ models:
     intermediate:
       +materialized: table
       +schema: silver
-      +post-hook: "ALTER TABLE {{ this }} ADD COLUMN id BIGSERIAL"
     marts:
       +materialized: table
       +schema: gold

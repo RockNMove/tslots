@@ -3,10 +3,11 @@
 -- чтобы склад был корректен когда операция содержит склад, но ячейка не указана.
 
 SELECT
-	s.slot_id
-	, s.zone_id
-	, s.name AS slot_name
-	, z.name AS zone_name
+    ROW_NUMBER() OVER () AS id
+    , s.slot_id
+    , s.zone_id
+    , s.name AS slot_name
+    , z.name AS zone_name
 FROM {{ ref('stg_moy_sklad__slots') }} s
 LEFT JOIN {{ ref('stg_moy_sklad__zones') }} z
     ON s.zone_id = z.zone_id

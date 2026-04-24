@@ -1,3 +1,4 @@
+{{ config(tags=['cross_layer']) }}
 -- Таблицы: warehouse__operations_with_balance vs int_operations_with_balance__agent_slot_item
 -- Инвариант: количество строк в витрине warehouse__operations_with_balance равно
 --   количеству строк в источнике int_operations_with_balance__agent_slot_item.

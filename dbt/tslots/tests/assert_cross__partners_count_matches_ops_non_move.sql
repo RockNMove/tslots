@@ -1,3 +1,4 @@
+{{ config(tags=['cross_layer']) }}
 -- Таблицы: partners__nrb_stock_movements vs int_operations_with_balance__agent_slot_item
 -- Инвариант: количество строк в partners__nrb_stock_movements равно количеству строк
 --   в int_operations_with_balance__agent_slot_item с фильтром WHERE doc_type != 'move'.

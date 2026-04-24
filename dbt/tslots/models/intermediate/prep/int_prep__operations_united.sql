@@ -3,12 +3,18 @@
 -- move даёт по 2 строки на позицию (op_type=out из sourceSlot, op_type=in в targetSlot).
 -- Ключ строки: doc_id + position_id + op_type — уникален даже когда один товар в документе в нескольких строках.
 
-SELECT * FROM {{ ref('stg_moy_sklad__demand') }}
-UNION ALL
-SELECT * FROM {{ ref('stg_moy_sklad__supply') }}
-UNION ALL
-SELECT * FROM {{ ref('stg_moy_sklad__loss') }}
-UNION ALL
-SELECT * FROM {{ ref('stg_moy_sklad__enter') }}
-UNION ALL
-SELECT * FROM {{ ref('stg_moy_sklad__move') }}
+WITH united AS (
+    SELECT * FROM {{ ref('stg_moy_sklad__demand') }}
+    UNION ALL
+    SELECT * FROM {{ ref('stg_moy_sklad__supply') }}
+    UNION ALL
+    SELECT * FROM {{ ref('stg_moy_sklad__loss') }}
+    UNION ALL
+    SELECT * FROM {{ ref('stg_moy_sklad__enter') }}
+    UNION ALL
+    SELECT * FROM {{ ref('stg_moy_sklad__move') }}
+)
+SELECT
+    ROW_NUMBER() OVER () AS id
+    , *
+FROM united

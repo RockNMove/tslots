@@ -120,7 +120,8 @@ WITH
 
 -- Обогащение атрибутами только на отфильтрованном наборе строк (is_used != 0).
 SELECT
-    b.agent_id
+    ROW_NUMBER() OVER () AS id
+    , b.agent_id
     , b.store_id
     , b.slot_id
     , b.item_id

@@ -13,7 +13,7 @@ HEADERS = {
 }
 LIMIT = 100
 
-START_TIMESTAMP = '2010-04-05 00:00:00'
+START_TIMESTAMP = '2026-04-05 00:00:00'
 STOP_TIMESTAMP = '2027-04-07 00:00:00'
 
 # --- Параметры запросов ---
@@ -47,19 +47,27 @@ params_move = {
     "expand": "positions.targetSlot,positions.sourceSlot,positions.assortment",
     "filter": f"updated>={START_TIMESTAMP};updated<{STOP_TIMESTAMP};applicable=true",
     "limit": LIMIT}
+params_deleted = {
+    "filter": f"eventType=puttorecyclebin;moment>={START_TIMESTAMP};moment<={STOP_TIMESTAMP}",
+    "limit": LIMIT,
+}
+params_restored = {
+    "filter": f"eventType=restorefromrecyclebin;moment>={START_TIMESTAMP};moment<={STOP_TIMESTAMP}",
+    "limit": LIMIT,
+}
 
 # --- Запросы к API ---
 
-BASE = 'https://api.moysklad.ru/api/remap/1.2/entity'
+BASE = 'https://api.moysklad.ru/api/remap/1.2'
 
 
 def get(endpoint, params):
     try:
-        r = requests.get(f'{BASE}/{endpoint}', headers=HEADERS, params=params, timeout=30)
+        r = requests.get(f'{BASE}/{endpoint}', headers=HEADERS, params=params, timeout=60)
         r.raise_for_status()
         return r.json()
     except requests.exceptions.ReadTimeout:
-        print(f'[{endpoint}] таймаут — API не ответил за 30 секунд, проверь соединение')
+        print(f'[{endpoint}] таймаут — API не ответил за 60 секунд, проверь соединение')
         raise
     except requests.exceptions.HTTPError as e:
         print(f'[{endpoint}] HTTP ошибка {e.response.status_code} — возможно неверный токен или нет доступа')
@@ -69,30 +77,66 @@ def get(endpoint, params):
         raise
 
 
-store_raw = get('store',        params_store)
-uom_raw = get('uom',          params_uom)
-product_raw = get('product',      params_product)
-variant_raw = get('variant',      params_variant)
-agent_raw = get('counterparty', params_agent)
-demand_raw = get('demand',       params_in_out)
-supply_raw = get('supply',       params_in_out)
-loss_raw = get('loss',         params_in_out)
-enter_raw = get('enter',        params_in_out)
-move_raw = get('move',         params_move)
+store_raw = get('entity/store',        params_store)
+uom_raw = get('entity/uom',          params_uom)
+product_raw = get('entity/product',      params_product)
+variant_raw = get('entity/variant',      params_variant)
+agent_raw = get('entity/counterparty', params_agent)
+demand_raw = get('entity/demand',       params_in_out)
+supply_raw = get('entity/supply',       params_in_out)
+loss_raw = get('entity/loss',         params_in_out)
+enter_raw = get('entity/enter',        params_in_out)
+move_raw = get('entity/move',         params_move)
+
+
+def get_audit_doc_ids(params):
+    """Возвращает плоский список {doc_id, entity_type, moment, name} из аудита.
+
+    МойСклад audit API устроен в два уровня:
+      1. /audit → контексты (одна запись = одна операция, может содержать несколько документов)
+      2. /audit/{context_id}/events → события внутри контекста, каждое содержит ссылку на документ
+
+    doc_id извлекается из entity.meta.href — последний сегмент URL.
+    """
+    AUDIT_EVENT_TYPES = {'puttorecyclebin', 'restorefromrecyclebin'}
+    contexts = get('audit', params)
+    result = []
+
+    for ctx in contexts.get('rows', []):
+        events = get(f'audit/{ctx["id"]}/events', {})
+        for ev in events.get('rows', []):
+            if ev.get('eventType') not in AUDIT_EVENT_TYPES:
+                continue
+            entity_href = ev.get('entity', {}).get('meta', {}).get('href', '')
+            result.append({
+                'doc_id':      entity_href.split('/')[-1] if entity_href else None,
+                'entity_type': ev.get('entityType'),
+                'event_type':  ev.get('eventType'),
+                'moment':      ctx.get('moment'),
+                'name':        ev.get('name'),
+            })
+
+    return result
+
+
+deleted_raw = get_audit_doc_ids(params_deleted)
+restored_raw = get_audit_doc_ids(params_restored)
 
 # --- Сохранение в temp/raw_json ---
 
 data_to_save = {
-    'store_raw.json':   store_raw,
-    'uom_raw.json':     uom_raw,
-    'product_raw.json': product_raw,
-    'variant_raw.json': variant_raw,
-    'agent_raw.json':   agent_raw,
-    'demand_raw.json':  demand_raw,
-    'supply_raw.json':  supply_raw,
-    'loss_raw.json':    loss_raw,
-    'enter_raw.json':   enter_raw,
-    'move_raw.json':    move_raw,
+    'store_raw.json':    store_raw,
+    'uom_raw.json':      uom_raw,
+    'product_raw.json':  product_raw,
+    'variant_raw.json':  variant_raw,
+    'agent_raw.json':    agent_raw,
+    'demand_raw.json':   demand_raw,
+    'supply_raw.json':   supply_raw,
+    'loss_raw.json':     loss_raw,
+    'enter_raw.json':    enter_raw,
+    'move_raw.json':     move_raw,
+    'deleted_raw.json':  deleted_raw,
+    'restored_raw.json': restored_raw,
 }
 
 out_dir = Path(__file__).parent / 'temp' / 'raw_json'

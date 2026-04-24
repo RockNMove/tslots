@@ -26,7 +26,8 @@ WITH
 
 -- Нарастающие балансы на новом зерне.
 SELECT
-    *
+    ROW_NUMBER() OVER () AS id
+    , *
     , COALESCE(
         SUM(quantity) OVER (
             PARTITION BY store_id, slot_id, item_id

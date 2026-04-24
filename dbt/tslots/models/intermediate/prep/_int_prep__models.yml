@@ -88,6 +88,38 @@ models:
       - name: depositor_inn
         description: "ИНН поклажедателя"
 
+  - name: int_prep__audit_united_enriched
+    description: >
+      Актуальный статус документов по данным аудита МойСклад.
+      UNION ALL двух staging-аудитов (deleted + restored), затем только последнее событие по doc_id.
+      status: 'deleted' — документ в корзине, 'active' — активен или восстановлен.
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+      - name: event_type
+        description: "Последнее событие: puttorecyclebin или restorefromrecyclebin"
+      - name: moment
+        description: "Время последнего события"
+      - name: name
+        description: "Номер документа"
+      - name: status
+        description: "Статус документа: 'deleted' или 'active'"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['deleted', 'active']
+
+  - name: int_prep__operations_united_cleaned
+    description: >
+      Операции без удалённых документов.
+      int_prep__operations_united минус документы в корзине МойСклад (статус 'deleted' из аудита).
+      Документы без записи в аудите и восстановленные считаются активными и остаются.
+      Используется как источник для всех downstream-моделей вместо int_prep__operations_united.
+
   - name: int_prep__slots_and_zones
     description: >
       Справочник ячеек с названием зоны. store_name не включён —

@@ -190,6 +190,42 @@ models:
       - name: op_type
         tests: [not_null]
 
+  - name: stg_moy_sklad__audit_deleted
+    description: "Документы помещённые в корзину МойСклад. Зерно: doc_id + event_type + moment"
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests: [not_null]
+      - name: event_type
+        description: "Тип события аудита — всегда puttorecyclebin"
+        tests: [not_null]
+      - name: name
+        description: "Номер документа"
+      - name: moment
+        description: "Время события"
+        tests: [not_null]
+
+  - name: stg_moy_sklad__audit_restored
+    description: "Документы восстановленные из корзины МойСклад. Зерно: doc_id + event_type + moment"
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests: [not_null]
+      - name: event_type
+        description: "Тип события аудита — всегда restorefromrecyclebin"
+        tests: [not_null]
+      - name: name
+        description: "Номер документа"
+      - name: moment
+        description: "Время события"
+        tests: [not_null]
+
   - name: stg_moy_sklad__move
     description: "Позиции документов «Перемещение». Каждая позиция — две строки: out (sourceSlot) и in (targetSlot)"
     columns:

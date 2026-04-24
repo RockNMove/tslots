@@ -260,7 +260,7 @@ Settings → People → Invite someone → введи email и имя → Save.
 
 Deployments → tslots_daily_deploy → Run → Quick Run.
 
-Flow выполнит 4 шага: ingest → bronze → silver → gold. Следи за логами: Flow Runs → последний запуск → Logs.
+Flow выполнит 5 шагов: ingest → bronze → silver → gold → кросс-слойные тесты. Следи за логами: Flow Runs → последний запуск → Logs.
 
 ### Подключение к PostgreSQL через DBeaver
 
@@ -417,6 +417,8 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 
 | Тест | Что проверяет |
 |---|---|
+| `assert_audit_no_duplicate_doc_id` | каждый `doc_id` встречается в `int_prep__audit_united_enriched` ровно один раз — дедупликация по последнему событию корректна |
+| `assert_cross__operations_cleaned_leq_united` | количество строк в `int_prep__operations_united_cleaned` не превышает `int_prep__operations_united` — фильтрация удалённых только убирает строки, не дублирует |
 | `assert_cross__united_count_matches_staging` | количество строк в `int_prep__operations_united` равно сумме строк во всех 5 staging-таблицах — UNION ALL не теряет и не дублирует операции |
 | `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__agent_slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__agent_slot_item` по зерну (slot, agent, item, day) |
 | `assert_cross__agent_spine_real_matches_operations` | `real_in` и `real_out` в agent_spine равны суммам из operations по зерну — физические движения не искажаются при агрегации по дням |
@@ -471,9 +473,9 @@ pipenv run dbt test --profiles-dir . --select assert_agent_spine_close_equals_op
 
 ### Когда запускаются автоматически
 
-Flow вызывает `dbt test` после `dbt run` для каждого слоя. Тесты на intermediate-модели запускаются в шаге `[3]`.
+Flow вызывает `dbt run + dbt test` для каждого слоя последовательно. Тесты на intermediate-модели запускаются в шаге `[3]`, тесты на золотой слой — в шаге `[4]`. Кросс-слойные тесты (сравнение gold vs silver) выделены в отдельный шаг `[5]` — они корректны только после того как все три слоя пересобраны.
 
-Если тест не проходит — flow завершается с ошибкой на шаге `dbt`. Следующие шаги не выполняются. Данные при этом уже пересчитаны (`dbt run` прошёл успешно), но pipeline сигнализирует о нарушении бизнес-логики. Смотреть детали: Prefect UI → Flow Runs → последний запуск → Logs.
+Если тест не проходит — flow завершается с ошибкой, следующие шаги не выполняются. Данные при этом уже пересчитаны (`dbt run` прошёл успешно), но pipeline сигнализирует о нарушении бизнес-логики. Смотреть детали: Prefect UI → Flow Runs → последний запуск → Logs.
 
 ---
 
@@ -545,7 +547,7 @@ Docker volume postgres_data  →     /var/lib/postgresql/data   (postgres)
 
 ### Pipeline
 
-Один flow `api-to-gold` — 4 шага строго последовательно:
+Один flow `api-to-gold` — 5 шагов строго последовательно:
 
 ```
 МойСклад API
@@ -553,26 +555,32 @@ Docker volume postgres_data  →     /var/lib/postgresql/data   (postgres)
      ▼  [1] ingest — Python/pandas → pg8000
 layer_raw.raw          ← одна таблица: entity + raw_json (JSONB)
      │
-     ▼  [2] dbt run --select staging
+     ▼  [2] dbt run + test --select staging
 bronze.*               ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__slots,  stg_moy_sklad__uoms,
      │                    stg_moy_sklad__products, stg_moy_sklad__variants,
      │                    stg_moy_sklad__agents,
      │                    stg_moy_sklad__demand, stg_moy_sklad__supply,
-     │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move
-     ▼  [3] dbt run --select intermediate
+     │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move,
+     │                    stg_moy_sklad__audit_deleted, stg_moy_sklad__audit_restored
+     ▼  [3] dbt run + test --select intermediate
 silver.*               ← prep: int_prep__operations_united,
-     │                         int_prep__items_united_enriched, int_prep__slots_enriched
+     │                         int_prep__audit_united_enriched,
+     │                         int_prep__operations_united_cleaned,
+     │                         int_prep__items_united_enriched,
+     │                         int_prep__slots_and_zones
      │                    int_operations_with_balance__agent_slot_item,
      │                    int_balance__agent_slot_item_daily_spine,
      │                    int_balance__slot_item_daily_spine
-     ▼  [4] dbt run --select marts
+     ▼  [4] dbt run + test --select marts
 gold.*                 ← warehouse: warehouse__operations_with_balance,
      │                              warehouse__balance_daily,
      │                              warehouse__balance_daily_no_agent
      │                    partners: partners__nrb_stock_movements
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings
+     ▼  [5] dbt test --select tag:cross_layer
+кросс-слойные тесты    ← warehouse vs int_operations, partners vs int_operations non-move
      ▼
 Metabase дашборды
 ```
@@ -623,7 +631,7 @@ Metabase дашборды
 - Цены, себестоимость, финансовые документы (счета, платежи, договоры)
 - Заказы покупателей и поставщикам
 - Сборочные задания, производственные операции
-- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_prep__operations_each` через INNER JOIN на справочник товаров
+- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_operations_with_balance__agent_slot_item` через INNER JOIN на справочник товаров
 
 tslots отслеживает исключительно **движение товаров в разрезе ячеек, контрагентов и поклажедателей**. Всё что не является товаром (`product` или `variant`) в аналитику не попадает.
 
@@ -635,7 +643,7 @@ tslots отслеживает исключительно **движение то
 
 | Колонка | Тип | Описание |
 |---|---|---|
-| entity | TEXT | Тип объекта МойСклад: store, uom, product, variant, counterparty, demand, supply, loss, enter, move |
+| entity | TEXT | Тип объекта МойСклад: store, uom, product, variant, counterparty, demand, supply, loss, enter, move, audit_deleted, audit_restored |
 | raw_json | JSONB | Полный JSON объекта из API |
 
 ---
@@ -658,6 +666,8 @@ tslots отслеживает исключительно **движение то
 | stg_moy_sklad__loss | entity = 'loss' | doc_id + position_id + op_type | Списания (расход) |
 | stg_moy_sklad__enter | entity = 'enter' | doc_id + position_id + op_type | Оприходования (приход) |
 | stg_moy_sklad__move | entity = 'move' | doc_id + position_id + op_type | Перемещения (две строки на позицию: out + in) |
+| stg_moy_sklad__audit_deleted | entity = 'audit_deleted' | doc_id + event_type + moment | Документы помещённые в корзину МойСклад |
+| stg_moy_sklad__audit_restored | entity = 'audit_restored' | doc_id + event_type + moment | Документы восстановленные из корзины МойСклад |
 
 Все операционные модели — инкрементальные (MERGE по unique_key). Ключ MERGE использует `position_id` (UUID позиции из МойСклад) — позволяет корректно обрабатывать документы где один товар стоит в нескольких строках. Остальные модели — таблицы.
 
@@ -682,8 +692,10 @@ tslots отслеживает исключительно **движение то
 | Модель | Описание |
 |---|---|
 | int_prep__operations_united | UNION ALL из 5 staging-таблиц операций |
-| int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty, barcodes |
-| int_prep__slots_enriched | Ячейки с денормализованными названиями склада и зоны |
+| int_prep__audit_united_enriched | Актуальный статус документов из аудита МойСклад. UNION deleted + restored, берётся последнее событие по doc_id |
+| int_prep__operations_united_cleaned | Операции без удалённых документов. Исключает строки чьи doc_id помечены как 'deleted' в аудите |
+| int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
+| int_prep__slots_and_zones | Ячейки с денормализованными названиями зоны |
 | int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_errors. INNER JOIN отфильтровывает услуги и наборы |
 | int_balance__agent_slot_item_daily_spine | Ежедневная сетка (agent × slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0 |
 | int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день) без агента. Roll-up поверх agent-spine |
@@ -785,8 +797,11 @@ tslots/
 │           ├── staging/
 │           │   └── moy_sklad/   ← bronze: stg_moy_sklad__*
 │           ├── intermediate/    ← silver:
-│           │   ├── prep/           int_prep__operations_united, int_prep__items_united_enriched,
-│           │   │                   int_prep__slots_enriched
+│           │   ├── prep/           int_prep__operations_united,
+│           │   │                   int_prep__audit_united_enriched,
+│           │   │                   int_prep__operations_united_cleaned,
+│           │   │                   int_prep__items_united_enriched,
+│           │   │                   int_prep__slots_and_zones
 │           │   └── (корень)        int_operations_with_balance__agent_slot_item,
 │           │                       int_balance__agent_slot_item_daily_spine,
 │           │                       int_balance__slot_item_daily_spine
