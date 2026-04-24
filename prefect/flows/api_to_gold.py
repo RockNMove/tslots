@@ -255,7 +255,7 @@ def dbt_test_cross_layer() -> None:
 def api_to_gold():
     logger = get_run_logger()
 
-    logger.info("Шаг 1/4 — ингестация...")
+    logger.info("Шаг 1/5 — ингестация...")
     ingest()
 
     logger.info("Шаг 2/5 — bronze (staging)...")
