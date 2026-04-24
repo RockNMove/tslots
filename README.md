@@ -57,10 +57,8 @@ docker-compose down -v
 ### Локальные тесты
 
 ```bash
-cd dbt/tslots
-
-# Локально запустить все тесты через `pipenv`
-pipenv run dbt test --profiles-dir .
+# Запустить все тесты через `pipenv` (из корня проекта)
+pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots
 ```
 
 ### Логи
@@ -84,21 +82,13 @@ docker exec -it tslots-nginx sh
 ### Запустить конкретную dbt модель
 
 ```bash
-docker exec -it tslots-prefect-worker bash -c "
-  dbt run --select stg_moy_sklad__demand \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots
-"
+docker exec -it tslots-prefect-worker bash -c "cd /app/dbt/tslots && dbt run --select stg_moy_sklad__demand"
 ```
 
 ### Пересобрать модель с нуля (--full-refresh)
 
 ```bash
-docker exec -it tslots-prefect-worker bash -c "
-  dbt run --full-refresh --select stg_moy_sklad__slots \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots
-"
+docker exec -it tslots-prefect-worker bash -c "cd /app/dbt/tslots && dbt run --full-refresh --select stg_moy_sklad__slots"
 ```
 
 ### Смена паролей
@@ -477,39 +467,25 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 **В Docker** (production-окружение):
 ```bash
 # все тесты
-docker exec -it tslots-prefect-worker bash -c "
-  dbt test \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots
-"
+docker exec -it tslots-prefect-worker bash -c "cd /app/dbt/tslots && dbt test"
 
 # только бизнес-тесты из папки tests/
-docker exec -it tslots-prefect-worker bash -c "
-  dbt test --select test_type:singular \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots
-"
+docker exec -it tslots-prefect-worker bash -c "cd /app/dbt/tslots && dbt test --select test_type:singular"
 
 # только intermediate-слой
-docker exec -it tslots-prefect-worker bash -c "
-  dbt test --select intermediate \
-  --project-dir /app/dbt/tslots \
-  --profiles-dir /app/dbt/tslots
-"
+docker exec -it tslots-prefect-worker bash -c "cd /app/dbt/tslots && dbt test --select intermediate"
 ```
 
 **Локально** (если dbt установлен через `pipenv`):
 ```bash
-cd dbt/tslots
-
-# все тесты
-pipenv run dbt test --profiles-dir .
+# все тесты (из корня проекта)
+pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots
 
 # только бизнес-тесты из папки tests/
-pipenv run dbt test --profiles-dir . --select test_type:singular
+pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots --select test_type:singular
 
 # один конкретный тест
-pipenv run dbt test --profiles-dir . --select assert_agent_spine_close_equals_open_plus_quantity
+pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots --select assert_agent_spine_close_equals_open_plus_quantity
 ```
 
 `--profiles-dir .` нужен потому что `profiles.yml` лежит в папке проекта, а не в стандартном `~/.dbt/`.
