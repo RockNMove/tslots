@@ -316,9 +316,13 @@ cat ~/.ssh/github_actions  # скопируй вывод — это приват
 | `SSH_HOST` | IP сервера |
 | `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
 
-**3.** Файл `.github/workflows/deploy.yml` уже есть в репозитории. Он описывает workflow: при каждом push в ветку `main` GitHub запускает виртуальную машину, которая подключается к серверу по SSH и выполняет `git pull + docker-compose up -d --build`.
+**3. Активируй workflow** — файл `.github/workflows/deploy.yml.disabled` уже есть в репозитории, но отключён. GitHub автоматически подхватывает все `*.yml`-файлы из папки `.github/workflows/` — файлы с другим расширением он игнорирует.
 
-После настройки Secrets каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска видно в GitHub → Actions.
+Чтобы активировать:
+- Переименуй `.github/workflows/deploy.yml.disabled` → `.github/workflows/deploy.yml` и закоммить
+- Убедись что у Personal Access Token (которым пушишь) включён scope **workflow**: GitHub → Settings → Developer settings → Personal access tokens → Edit → поставить галочку `workflow`
+
+После этого каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
 
 > `.env` не в git — изменения в нём вносятся на сервере вручную через `nano /opt/tslots/.env` и применяются отдельным `docker-compose up -d`.
 
