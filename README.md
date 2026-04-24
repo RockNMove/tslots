@@ -316,10 +316,10 @@ cat ~/.ssh/github_actions  # скопируй вывод — это приват
 | `SSH_HOST` | IP сервера |
 | `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
 
-**3. Активируй workflow** — файл `.github/workflows/deploy.yml.disabled` уже есть в репозитории, но отключён. GitHub автоматически подхватывает все `*.yml`-файлы из папки `.github/workflows/` — файлы с другим расширением он игнорирует.
+**3. Активируй workflow** — файл `deploy.yml` уже готов, но пока отключён: папка называется `.github_disabled/workflows/` вместо `.github/workflows/`. GitHub ищет workflow-файлы только в `.github/workflows/` — папки с другим именем игнорирует.
 
 Чтобы активировать:
-- Переименуй `.github/workflows/deploy.yml.disabled` → `.github/workflows/deploy.yml` и закоммить
+- Переименуй папку `.github_disabled` → `.github` и закоммить
 - Убедись что у Personal Access Token (которым пушишь) включён scope **workflow**: GitHub → Settings → Developer settings → Personal access tokens → Edit → поставить галочку `workflow`
 
 После этого каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
