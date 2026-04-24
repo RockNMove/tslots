@@ -1,7 +1,7 @@
 -- stg_moy_sklad__loss.sql — позиции документов «Списание».
 -- Каждая строка = одна позиция документа. Товар убывает со склада (op_type = out).
 
-{{ config(materialized='incremental', unique_key=['doc_id', 'position_id', 'op_type'], incremental_strategy='merge') }}
+{{ config(materialized='incremental', unique_key='doc_id', incremental_strategy='delete+insert') }}
 
 SELECT
     l.raw_json->>'id'                                       AS doc_id,

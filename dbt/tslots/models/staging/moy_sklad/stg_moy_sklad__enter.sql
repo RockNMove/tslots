@@ -1,7 +1,7 @@
 -- stg_moy_sklad__enter.sql — позиции документов «Оприходование».
 -- Каждая строка = одна позиция документа. Товар приходит на склад (op_type = in).
 
-{{ config(materialized='incremental', unique_key=['doc_id', 'position_id', 'op_type'], incremental_strategy='merge') }}
+{{ config(materialized='incremental', unique_key='doc_id', incremental_strategy='delete+insert') }}
 
 SELECT
     e.raw_json->>'id'                                       AS doc_id,

@@ -57,7 +57,7 @@ models:
     columns:
       - name: item_id
         description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
-        tests: [not_null]
+        tests: [not_null, unique]
       - name: depositor_id
         description: "UUID поклажедателя (из атрибута товара)"
       - name: expected_bin_qty

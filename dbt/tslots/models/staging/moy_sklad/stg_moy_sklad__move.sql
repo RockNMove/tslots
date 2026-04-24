@@ -3,7 +3,7 @@
 --   out — товар покидает sourceSlot (ячейка освобождается)
 --   in  — товар занимает targetSlot (ячейка занимается)
 
-{{ config(materialized='incremental', unique_key=['doc_id', 'position_id', 'op_type'], incremental_strategy='merge') }}
+{{ config(materialized='incremental', unique_key='doc_id', incremental_strategy='delete+insert') }}
 
 WITH
 

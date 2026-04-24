@@ -105,6 +105,14 @@ docker exec -it tslots-prefect-worker bash -c "
 
 Все секреты хранятся в `.env`. Менять что-то в коде не нужно.
 
+#### Проверка — не попал ли .env в git
+
+`.env` есть в `.gitignore`, но на всякий случай проверь историю:
+```bash
+git log --all --oneline -- .env
+```
+Если вывод пустой — всё чисто. Если есть коммиты — ротируй токен МойСклад: Настройки → Безопасность → Токены доступа.
+
 | Переменная | Где используется |
 |---|---|
 | `DB_PASSWORD` | PostgreSQL, Prefect Server, Prefect Worker, dbt, Metabase |
@@ -125,8 +133,8 @@ docker-compose restart prefect-worker
 
 1. Смени пароль внутри PostgreSQL:
 ```bash
-docker exec -it tslots-postgres psql -U admin -d tslots -c "
-  ALTER USER admin PASSWORD 'новый_пароль';
+docker exec -it tslots-postgres psql -U <DB_USER из .env> -d <DB_NAME из .env> -c "
+  ALTER USER <DB_USER из .env> PASSWORD 'новый_пароль';
 "
 ```
 2. Обнови `.env`
@@ -148,7 +156,7 @@ docker-compose restart prefect-server prefect-worker metabase
 curl -fsSL https://get.docker.com | sh
 ```
 
-### Шаг 2 — Получи код
+### Шаг 2 — Склонируй репозиторий
 
 Склонируй репозиторий в удобную папку. На сервере рекомендуем `/opt/tslots`:
 
@@ -186,21 +194,26 @@ nano .env
 | Переменная | Локально | На сервере |
 |---|---|---|
 | `MS_TOKEN` | токен из МойСклад | токен из МойСклад |
-| `DB_USER` | можно оставить `admin` | можно оставить `admin` |
-| `DB_PASSWORD` | можно оставить `admin` | надёжный пароль |
-| `DB_NAME` | можно оставить `tslots` | можно оставить `tslots` |
+| `DB_USER` | любое | не `admin`, `postgres`, `user` — смени на что-то нестандартное |
+| `DB_PASSWORD` | любое | надёжный пароль — единственная защита от перебора |
+| `DB_NAME` | `tslots` | `tslots` |
+| `DB_PORT` | `5432` | нестандартный порт из диапазона `49152–65535`, например `58432` |
+| `PREFECT_PORT` | `4200` | нестандартный порт, например `54200` |
+| `METABASE_PORT` | `3000` | нестандартный порт, например `53000` |
 | `SERVER_HOST` | `localhost` | внешний IP или домен сервера |
 | `PREFECT_USER` | придумай логин | придумай логин |
 | `PREFECT_PASSWORD` | придумай пароль | надёжный пароль |
+
+> **Безопасность PostgreSQL на сервере.** Порт 5432 постоянно сканируется ботами. Нестандартное имя пользователя и порт из диапазона `49152–65535` убирают 99% автоматических атак — боты перебирают стандартные порты и дефолтные логины (`admin`, `postgres`, `user`). Единственная реальная защита — надёжный пароль.
 
 Токен МойСклад: Настройки → Безопасность → Токены доступа.
 
 ### Шаг 4 — Открой порты (только на сервере)
 
 ```bash
-ufw allow 4200   # Prefect UI
-ufw allow 3000   # Metabase
-ufw allow 5432   # PostgreSQL (DBeaver и другие SQL-клиенты)
+ufw allow <PREFECT_PORT из .env>   # Prefect UI
+ufw allow <METABASE_PORT из .env>  # Metabase
+ufw allow <DB_PORT из .env>        # PostgreSQL
 ```
 
 Если сервер в облаке (Hetzner, DigitalOcean, Yandex Cloud) — дополнительно открой эти же порты в панели управления облака в настройках сети/файрвола.
@@ -223,8 +236,8 @@ docker-compose ps
 ### Шаг 6 — Настрой Metabase (первый раз)
 
 Открой в браузере:
-- Локально: `http://localhost:3000`
-- На сервере: `http://<IP>:3000`
+- Локально: `http://localhost:<METABASE_PORT из .env>`
+- На сервере: `http://<IP>:<METABASE_PORT из .env>`
 
 Выбери язык → заполни имя, email, пароль и название организации (данные хранятся только локально, можно вводить любые).
 
@@ -253,8 +266,8 @@ Settings → People → Invite someone → введи email и имя → Save.
 ### Шаг 7 — Запусти pipeline
 
 Открой Prefect UI:
-- Локально: `http://localhost:4200`
-- На сервере: `http://<IP>:4200`
+- Локально: `http://localhost:<PREFECT_PORT из .env>`
+- На сервере: `http://<IP>:<PREFECT_PORT из .env>`
 
 Введи логин и пароль из `.env` (`PREFECT_USER` / `PREFECT_PASSWORD`).
 
@@ -264,13 +277,17 @@ Flow выполнит 5 шагов: ingest → bronze → silver → gold → к
 
 ### Подключение к PostgreSQL через DBeaver
 
-| Поле | Значение |
-|---|---|
-| Host | `localhost` (локально) или IP сервера |
-| Port | `5432` |
-| Database | значение `DB_NAME` из `.env` |
-| Username | значение `DB_USER` из `.env` |
-| Password | значение `DB_PASSWORD` из `.env` |
+`Database → New Database Connection → PostgreSQL`
+
+| Поле | Локально | На сервере |
+|---|---|---|
+| Host | `localhost` | IP сервера |
+| Port | значение `DB_PORT` из `.env` | значение `DB_PORT` из `.env` |
+| Database | значение `DB_NAME` из `.env` | значение `DB_NAME` из `.env` |
+| Username | значение `DB_USER` из `.env` | значение `DB_USER` из `.env` |
+| Password | значение `DB_PASSWORD` из `.env` | значение `DB_PASSWORD` из `.env` |
+
+> На сервере используй надёжный пароль — порт открыт публично.
 
 ---
 
@@ -309,34 +326,59 @@ cat ~/.ssh/github_actions  # скопируй вывод — это приват
 | `SSH_HOST` | IP сервера |
 | `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
 
-**3. Создай файл** `.github/workflows/deploy.yml` в репозитории:
+**3.** Файл `.github/workflows/deploy.yml` уже есть в репозитории. Он описывает workflow: при каждом push в ветку `main` GitHub запускает виртуальную машину, которая подключается к серверу по SSH и выполняет `git pull + docker-compose up -d --build`.
 
-```yaml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /opt/tslots
-            git pull
-            docker-compose up -d --build
-```
-
-После этого каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска видно в GitHub → Actions.
+После настройки Secrets каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска видно в GitHub → Actions.
 
 > `.env` не в git — изменения в нём вносятся на сервере вручную через `nano /opt/tslots/.env` и применяются отдельным `docker-compose up -d`.
+
+---
+
+## Бэкап базы данных
+
+Все данные хранятся в Docker volume `postgres_data`. Потеря диска без бэкапа = потеря всего.
+
+### Как работает бэкап
+
+Скрипт `scripts/backup.sh` делает `pg_dump` внутри контейнера и сохраняет дамп в `/var/backups/tslots/`. Дампы старше `BACKUP_KEEP_DAYS` дней удаляются автоматически.
+
+### Настройка (один раз на сервере)
+
+**1. Сделай скрипт исполняемым:**
+```bash
+chmod +x /opt/tslots/scripts/backup.sh
+```
+
+**2. Добавь в cron** (запуск каждый день в 03:00):
+```bash
+crontab -e
+```
+Добавь строку:
+```
+0 3 * * * /opt/tslots/scripts/backup.sh >> /opt/tslots/scripts/backup.log 2>&1
+```
+
+**3. Проверь что работает:**
+```bash
+/opt/tslots/scripts/backup.sh
+ls /var/backups/tslots/
+```
+
+### Восстановление из дампа
+
+```bash
+# Скопируй нужный дамп в контейнер и восстанови
+docker cp /var/backups/tslots/<файл>.dump tslots-postgres:/tmp/restore.dump
+docker exec -it tslots-postgres pg_restore -U <DB_USER из .env> -d <DB_NAME из .env> -c /tmp/restore.dump
+```
+
+### Параметры ротации
+
+| Параметр | Значение по умолчанию | Где менять |
+|---|---|---|
+| Папка бэкапов | `/var/backups/tslots/` | `scripts/backup.sh` → `BACKUP_DIR` |
+| Хранить дней | `7` | `.env` → `BACKUP_KEEP_DAYS` |
+| Время запуска | `03:00` | `crontab -e` |
 
 ---
 
@@ -382,6 +424,8 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | `assert_operations_close_equals_open_plus_quantity` | `close_slot_balance = open_slot_balance + quantity` на уровне каждой операции (до агрегации по дням) |
 | `assert_operations_real_in_nonnegative` | `real_in >= 0` — физический приход никогда не отрицателен |
 | `assert_operations_real_out_nonpositive` | `real_out <= 0` — физический расход никогда не положителен |
+| `assert_operations_total_balance_continuity` | `open_total_balance` каждой строки равен `close_total_balance` предыдущей в той же партиции `(agent_id, item_id)` — нарастающий остаток без разрывов |
+| `assert_operations_depositor_id_not_null` | `depositor_id` не `NULL` ни в одной операции — критично для биллинга ответственного хранения |
 
 **Ежедневный spine по агентам** (`int_balance__agent_slot_item_daily_spine`):
 
@@ -426,6 +470,7 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | `assert_cross__slot_grains_covered_by_agent_spine` | каждое зерно (slot, item, day) из slot_spine присутствует хотя бы в одной строке agent_spine — данные в slot_spine всегда прослеживаются до конкретного агента |
 | `assert_cross__warehouse_ops_count_matches_int_operations` | количество строк в `warehouse__operations_with_balance` равно количеству строк в `int_operations_with_balance__agent_slot_item` — витрина не фильтрует и не дублирует строки |
 | `assert_cross__partners_count_matches_ops_non_move` | количество строк в `partners__nrb_stock_movements` равно количеству строк в int_operations с фильтром `doc_type != 'move'` — memo-перемещения корректно исключены |
+| `assert_cross__operations_slot_id_exists_in_slots` | каждый `slot_id` в операциях (кроме `off_slot`) присутствует в справочнике ячеек — нет ссылок на удалённые ячейки |
 
 ### Запуск тестов
 
@@ -502,8 +547,9 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 │         └────────────────────────────────────────────┘          │
 └─────────────────────────────────────────────────────────────────┘
           │                     │                    │
-    localhost:5432        localhost:4200        localhost:3000
-  (VS Code, DBeaver)   (Prefect UI, Basic Auth)  (Metabase UI)
+  localhost:<DB_PORT>      localhost:<PREFECT_PORT>   localhost:<METABASE_PORT>
+  (VS Code, DBeaver)     (Prefect UI, Basic Auth)   (Metabase UI)
+                    (порты из .env)
 
 МойСклад API ──► prefect-worker (ingest) ──► postgres (layer_raw)
                  prefect-worker (dbt)    ──► postgres (bronze/silver/gold)
@@ -517,9 +563,9 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 |---|---|---|---|
 | tslots-postgres | postgres:16-alpine | 5432 | База данных |
 | tslots-prefect-server | prefecthq/prefect:3-python3.11 | — | UI и API Prefect (только внутри Docker-сети) |
-| tslots-nginx | nginx:stable-alpine (custom) | 4200 | Basic Auth перед Prefect UI |
+| tslots-nginx | nginx:stable-alpine (custom) | PREFECT_PORT из .env | Basic Auth перед Prefect UI |
 | tslots-prefect-worker | prefect/Dockerfile (custom) | — | Выполняет flow и dbt |
-| tslots-metabase | metabase/metabase:v0.58.13 | 3000 | BI-дашборды поверх PostgreSQL |
+| tslots-metabase | metabase/metabase:v0.58.13 | METABASE_PORT из .env | BI-дашборды поверх PostgreSQL |
 
 #### Volumes и хранение данных
 

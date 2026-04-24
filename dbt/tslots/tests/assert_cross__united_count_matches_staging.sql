@@ -1,3 +1,4 @@
+{{ config(tags=['cross_layer']) }}
 -- Таблицы: int_prep__operations_united vs 5 staging-таблиц операций
 -- Инвариант: количество строк в int_prep__operations_united равно сумме строк
 --   во всех пяти staging-таблицах (demand + supply + loss + enter + move).

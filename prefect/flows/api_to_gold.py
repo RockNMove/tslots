@@ -66,7 +66,7 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
             f"{BASE_URL}/{endpoint}",
             headers=HEADERS,
             params={**params, "offset": offset},
-            timeout=30,
+            timeout=120,
         )
         response.raise_for_status()
         page = response.json().get("rows", [])
@@ -116,7 +116,7 @@ def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     }
     contexts, offset = [], 0
     while True:
-        r = requests.get(AUDIT_URL, headers=HEADERS, params={**params, "offset": offset}, timeout=60)
+        r = requests.get(AUDIT_URL, headers=HEADERS, params={**params, "offset": offset}, timeout=120)
         r.raise_for_status()
         page = r.json().get("rows", [])
         contexts.extend(page)
@@ -126,7 +126,7 @@ def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
 
     result = []
     for ctx in contexts:
-        r = requests.get(f"{AUDIT_URL}/{ctx['id']}/events", headers=HEADERS, timeout=60)
+        r = requests.get(f"{AUDIT_URL}/{ctx['id']}/events", headers=HEADERS, timeout=120)
         r.raise_for_status()
         for ev in r.json().get("rows", []):
             if ev.get("eventType") not in AUDIT_EVENT_TYPES:
@@ -145,7 +145,7 @@ def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
 # TASKS
 
 
-@task(name="ingest")
+@task(name="ingest", retries=2, retry_delay_seconds=60)
 def ingest():
     logger = get_run_logger()
 
@@ -192,7 +192,7 @@ def ingest():
     if audit_since is None:
         logger.info("audit: операций нет — пропускаем")
     else:
-        logger.info(f"audit: выкачиваем с {audit_since}")
+        logger.info(f"audit: инкрементально с {audit_since}")
         for event_type, entity_name in [
             ("puttorecyclebin",      "audit_deleted"),
             ("restorefromrecyclebin","audit_restored"),
