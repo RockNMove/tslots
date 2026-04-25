@@ -32,7 +32,7 @@
 
 В МойСклад нет возможности задать условия для предупреждений об аномальных ситуациях — система не сигнализирует об отрицательном остатке в ячейке, о нескольких разных товарах в одной ячейке или о расхождении фактического остатка с ожидаемым.
 
-**tslots:** `focus__errors_warnings` — отфильтрованные строки с полем `slot_errors`. Поверх этой витрины можно настроить алерты в Metabase.
+**tslots:** две витрины аномалий — `focus__errors_warnings_operations` (операционные ошибки: отрицательный остаток, операции без ячейки) и `focus__slot_errors_warnings_balance` (балансовые предупреждения на последний день: несколько товаров в ячейке, расхождение с ожидаемым количеством). Поверх этих витрин можно настроить алерты в Metabase.
 
 ---
 
@@ -59,6 +59,14 @@ docker-compose down -v
 ```bash
 # Запустить все тесты через `pipenv` (из корня проекта)
 pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots
+```
+
+### Пересчитать silver и gold без staging
+
+Пересчитывает и тестирует intermediate + marts, не трогая bronze. Bronze берётся как есть из БД — команда предполагает что staging уже актуален.
+
+```bash
+pipenv run dbt build --project-dir dbt/tslots --profiles-dir dbt/tslots --select path:models/intermediate path:models/marts
 ```
 
 ### Логи
@@ -448,7 +456,7 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | Тест | Что проверяет |
 |---|---|
 | `assert_warehouse_balance_daily_no_zero_is_used` | строки с `is_used = 0` не должны попасть в финальную витрину |
-| `assert_errors_warnings_no_null_slot_errors` | в витрине `focus__errors_warnings` нет строк с `NULL` в поле `slot_errors` |
+| `assert_errors_warnings_no_null_slot_errors` | в витрине `focus__errors_warnings_operations` нет строк с `NULL` или пустым значением в поле `slot_oper_errors` |
 | `assert_partners_no_move_doc_type` | в `partners__nrb_stock_movements` нет строк с `doc_type = 'move'` (memo-перемещения исключены) |
 
 **Кросс-табличные** (целостность потока данных между слоями):
@@ -507,6 +515,43 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 ## Описание проекта
 
 Этот раздел — полный технический и бизнес-контекст для разработчика или языковой модели, которой нужно разобраться в проекте с нуля: что откуда берётся, как преобразуется, что означают конкретные поля и почему бизнес-логика реализована именно так.
+
+### Бизнес-логика
+
+#### Агент и поклажедатель
+
+**Агент** — контрагент, с которым заключена сделка на ответственное хранение. Именно на агента оформляются документы в МойСклад (приёмки, реализации и т.д.), он же является стороной в расчётах.
+
+**Поклажедатель** — тот, кому фактически принадлежит товар. Поклажедатель хранится как дополнительное поле `Поклажедатель` в карточке товара в МойСклад. В теории один агент может размещать на складе товары разных поклажедателей — тогда у одного агента будет несколько поклажедателей. На практике в большинстве случаев агент и поклажедатель совпадают. Поле `Поклажедатель` — атрибут товара, а не документа: один товар всегда принадлежит одному поклажедателю.
+
+#### Как считается заполненность ячейки на день
+
+Каждая ячейка получает флаг `is_used` на каждый день:
+
+| Значение | Условие | Смысл |
+|---|---|---|
+| `1` (занята) | `close_slot_balance > 0` | Товар присутствует в ячейке на конец дня |
+| `1` (занята) | Приход = расход за день AND расход ≠ 0 | Товар пришёл и ушёл в один день — нетто ноль, но ячейка физически использовалась. Учитываются только реальные операции (supply/demand), move в этот расчёт не входит |
+| `2` (ошибка) | `close_slot_balance < 0` | Отрицательный остаток — ошибка данных. Ячейка попадает в аналитику для диагностики, но не считается нормально занятой |
+| `0` (пустая) | Иначе | Остаток ноль, оборота не было — строка исключается из финальных витрин |
+
+Дни без каких-либо операций по ячейке spine заполняет автоматически: ячейка сохраняет предыдущий остаток, `quantity = 0`, флаг `is_used` определяется по `close_slot_balance`.
+
+Для выставления счетов используется количество **ячейко-дней** — строк с `is_used = 1` по каждому поклажедателю за период. Агрегат по месяцам — `focus__slots_used_monthly`.
+
+#### Нормы и аномалии
+
+Проект фиксирует четыре типа отклонений. Технически все они возможны и данные с ними не отбрасываются, но они сигнализируют о нарушении ожидаемого порядка работы склада.
+
+**Отрицательный конечный остаток** (`OPER_ERROR: slot overdraft`) — расход в ячейке превысил приход. Физически невозможно: означает пропущенную операцию прихода или ошибку в документах МойСклад. Это единственный тип, классифицированный как `ERROR` (не `WARNING`), поскольку нарушает физическую реальность.
+
+**Несколько типов товара в одной ячейке** (`BALANCE_WARNING: slot has > 1 items`) — в ячейке одновременно числятся разные позиции с положительным остатком. Технически система это допускает, но по правилам склада одна ячейка предназначена под один тип товара. Нарушение обнаруживается на уровне дневного баланса (`int_balance__slot_item_daily_spine`).
+
+**Расхождение с ожидаемым количеством** (`BALANCE_WARNING: unexpected slot balance`) — фактический остаток в ячейке (`close_slot_balance`) отличается от значения поля `Кол-во в ячейке` из карточки товара в МойСклад (`expected_bin_qty`). Это поле задаёт ориентировочное количество единиц, которое должна вмещать ячейка. Расхождение может указывать на неполную приёмку, излишек или пересортицу.
+
+**Операция без ячейки** (`OPER_WARNING: Out-of-slot operation`) — в документе МойСклад не указана ячейка. Операция технически проводится, но не может быть привязана к конкретному слоту. Такие строки получают синтетический `slot_id = 'off_slot'` и образуют отдельную партицию — их остатки не смешиваются с реальными ячейками. Для отчётов по ячейкам эти строки нужно исключать фильтром `slot_id != 'off_slot'`.
+
+---
 
 ### Инфраструктура
 
@@ -604,7 +649,8 @@ gold.*                 ← warehouse: warehouse__operations_with_balance,
      │                              warehouse__balance_daily_no_agent
      │                    partners: partners__nrb_stock_movements
      │                    focus:    focus__slots_used_monthly,
-     │                              focus__errors_warnings
+     │                              focus__errors_warnings_operations,
+     │                              focus__slot_errors_warnings_balance
      ▼  [5] dbt test --select tag:cross_layer
 кросс-слойные тесты    ← warehouse vs int_operations, partners vs int_operations non-move
      ▼
@@ -722,7 +768,7 @@ tslots отслеживает исключительно **движение то
 | int_prep__operations_united_cleaned | Операции без удалённых документов. Исключает строки чьи doc_id помечены как 'deleted' в аудите |
 | int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
 | int_prep__slots_and_zones | Ячейки с денормализованными названиями зоны |
-| int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_errors. INNER JOIN отфильтровывает услуги и наборы |
+| int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_oper_errors. INNER JOIN отфильтровывает услуги и наборы |
 | int_balance__agent_slot_item_daily_spine | Ежедневная сетка (agent × slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0 |
 | int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день) без агента. Roll-up поверх agent-spine |
 
@@ -736,16 +782,24 @@ tslots отслеживает исключительно **движение то
 - `close_slot_balance` — после текущей операции (`CURRENT ROW`)
 - `open_total_balance` и `close_total_balance` — то же самое, но суммарно по товару у агента (`PARTITION BY agent_id, item_id`), только по real-движениям
 
-**off_slot.** Если в документе МойСклад не указана ячейка, операция получает `slot_id = 'off_slot'`, `slot_name = 'off_slot'`, `zone_name = 'off_slot'`. Это виртуальная «мусорная» ячейка: она образует собственную партицию в оконных функциях, поэтому её баланс никак не смешивается с реальными слотами. В поле `slot_errors` такие строки автоматически получают `WARNING: Out-of-slot operation`. Фильтровать off_slot в витринах можно по `slot_id != 'off_slot'` или по отсутствию этого предупреждения в `slot_errors`.
+**off_slot.** Если в документе МойСклад не указана ячейка, операция получает `slot_id = 'off_slot'`, `slot_name = 'off_slot'`, `zone_name = 'off_slot'`. Это виртуальная «мусорная» ячейка: она образует собственную партицию в оконных функциях, поэтому её баланс никак не смешивается с реальными слотами. В поле `slot_oper_errors` такие строки автоматически получают `OPER_WARNING: Out-of-slot operation`. Фильтровать off_slot в витринах можно по `slot_id != 'off_slot'` или по отсутствию этого предупреждения в `slot_oper_errors`.
 
-Здесь же рассчитывается `slot_errors` — диагностическое поле. Формируется через `CONCAT_WS(' | ', ...)` — одна строка может содержать несколько предупреждений одновременно, разделённых ` | `. Пустая строка `''` означает отсутствие аномалий.
+Диагностика разделена на два поля в разных моделях:
+
+**`slot_oper_errors`** (`int_operations_with_balance__agent_slot_item`) — операционные аномалии на уровне отдельной операции. Формируется через `CONCAT_WS(' | ', ...)`. Пустая строка `''` означает отсутствие аномалий.
 
 | Значение | Условие | Смысл |
 |---|---|---|
-| `ERROR: slot overdraft` | `close_slot_balance < 0` | Отрицательный остаток в ячейке — расход превысил приход. Как правило, признак пропущенной операции или ошибки в документе. |
-| `WARNING: slot has > 1 items` | `items_in_slot > 1` | В одной ячейке одновременно зафиксированы операции по нескольким разным товарам в этот день. |
-| `WARNING: unexpected slot balance` | `close_slot_balance != expected_bin_qty` | Остаток в ячейке не совпадает с ожидаемым (`Кол-во в ячейке` из карточки товара). |
-| `WARNING: Out-of-slot operation` | `slot_id = 'off_slot'` | Операция проведена без указания ячейки. Такие операции группируются в условную ячейку `off_slot` и не влияют на остатки реальных слотов. |
+| `OPER_ERROR: slot overdraft` | `close_slot_balance < 0` | Отрицательный остаток в ячейке — расход превысил приход. Как правило, признак пропущенной операции или ошибки в документе. |
+| `OPER_WARNING: Out-of-slot operation` | `slot_id = 'off_slot'` | Операция проведена без указания ячейки. Такие операции группируются в условную ячейку `off_slot` и не влияют на остатки реальных слотов. |
+| `''` (пустая строка) | Всё в норме | Аномалий не обнаружено. |
+
+**`slot_balance_errors`** (`int_balance__slot_item_daily_spine`) — балансовые предупреждения на уровне дня, на зерне слот × товар × день.
+
+| Значение | Условие | Смысл |
+|---|---|---|
+| `BALANCE_WARNING: slot has > 1 items` | `items_in_slot > 1` | В ячейке одновременно хранятся несколько разных товаров (разновидностей с положительным остатком). |
+| `BALANCE_WARNING: unexpected slot balance` | `close_slot_balance != expected_bin_qty` | Остаток в ячейке не совпадает с ожидаемым (`Кол-во в ячейке` из карточки товара). |
 | `''` (пустая строка) | Всё в норме | Аномалий не обнаружено. |
 
 #### Ежедневный spine — ключевая модель проекта
@@ -780,12 +834,13 @@ tslots отслеживает исключительно **движение то
 
 | Папка | Модель | Источник | Описание |
 |---|---|---|---|
-| warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_errors |
+| warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_oper_errors |
 | warehouse | warehouse__balance_daily | int_balance__agent_slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по агенту и поклажедателю |
 | warehouse | warehouse__balance_daily_no_agent | int_balance__slot_item_daily_spine | Остаток товара в ячейке по дням без разбивки по агенту, только ненулевые строки |
 | partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
 | focus | focus__slots_used_monthly | int_balance__agent_slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
-| focus | focus__errors_warnings | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_errors IS NOT NULL) — для мониторинга в Metabase |
+| focus | focus__errors_warnings_operations | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_oper_errors != '') — для мониторинга в Metabase |
+| focus | focus__slot_errors_warnings_balance | int_balance__slot_item_daily_spine | Балансовые аномалии ячеек на последний день (slot_balance_errors != '') — для мониторинга в Metabase |
 
 Все модели — таблицы.
 
@@ -837,7 +892,8 @@ tslots/
 │               │                   warehouse__balance_daily_no_agent
 │               ├── partners/    ← partners__nrb_stock_movements
 │               └── focus/       ← focus__slots_used_monthly,
-│                                   focus__errors_warnings
+│                                   focus__errors_warnings_operations,
+│                                   focus__slot_errors_warnings_balance
 │
 └── test_notebooks/
     └── get_jsons.py           ← отладка: запрашивает все сущности API и сохраняет JSON в temp/raw_json/

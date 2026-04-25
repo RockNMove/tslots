@@ -21,7 +21,7 @@ WITH
             , SUM(real_out)  AS real_out
             , SUM(move_out)  AS move_out
         FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
-        GROUP BY moment_day, agent_id, slot_id, item_id, store_id
+        GROUP BY moment_day, agent_id, store_id, slot_id, item_id -- store_id включен в группировку потому что операция может быть слота
     ),
 
     -- Уникальные тройки зерна (слот, агент, товар, склад) и дата первой операции.
@@ -34,7 +34,7 @@ WITH
             , item_id
             , MIN(moment_day) AS seek_start
         FROM daily_agg
-        GROUP BY agent_id, slot_id, item_id, store_id
+        GROUP BY agent_id, store_id, slot_id, item_id -- store_id включен в группировку потому что операция может быть слота
     ),
 
     -- Сетка дат: каждая тройка зерна × каждый день от seek_start до сегодня (fan-out).
@@ -139,6 +139,7 @@ SELECT
     , i.product
     , i.lot
     , i.mfg_date
+    , i.expected_bin_qty
     , b.open_slot_balance
     , b.quantity
     , b.close_slot_balance

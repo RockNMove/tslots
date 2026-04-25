@@ -5,10 +5,10 @@
 -- это позволяет корректно показывать склад даже когда ячейка не указана.
 -- Операции без slot_id (ячейка не указана в документе МойСклад) получают slot_id = 'off_slot',
 -- slot_name = 'off_slot', zone_name = 'off_slot'. Они образуют отдельную партицию и не влияют
--- на остатки реальных слотов. В поле slot_errors такие строки получают WARNING: Out-of-slot operation.
+-- на остатки реальных слотов. В поле slot_oper_errors такие строки получают OPER_WARNING: Out-of-slot operation.
 -- open/close_total_balance — нарастающий остаток по товару (item_id), все склады вместе; move не учитывается.
 -- open/close_slot_balance  — нарастающий остаток по товару в ячейке (item_id, slot_id); off_slot считается отдельно.
--- items_in_slot            — кол-во операций по одному товару в ячейке за день (PARTITION BY item_id, date, slot_id).
+-- slot_oper_errors         — операционные аномалии: OPER_ERROR slot overdraft, OPER_WARNING Out-of-slot operation.
 WITH
 	tab AS(
 		SELECT
@@ -44,7 +44,6 @@ WITH
 			, a.inn AS agent_inn
 			, i.depositor_name
 			, i.depositor_inn
-			, COUNT(*) OVER(PARTITION BY o.item_id, o.moment::date, o.slot_id) AS items_in_slot
 		FROM {{ ref('int_prep__operations_united_cleaned') }} o
 		INNER JOIN {{ ref('int_prep__items_united_enriched') }} i ON o.item_id=i.item_id     -- lot, mfg_date, uom, depositor и др.
 		LEFT JOIN {{ ref('int_prep__slots_and_zones') }} sz ON o.slot_id=sz.slot_id          -- slot_name, zone_name; NULL если ячейка не указана
@@ -56,14 +55,14 @@ WITH
 		*
 		, COALESCE(
 			SUM(quantity) OVER(
-				PARTITION BY store_id, agent_id, item_id, slot_id
+				PARTITION BY store_id, slot_id, agent_id, item_id
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 			),
 		0) AS open_slot_balance
 		, COALESCE(
 			SUM(quantity) OVER(
-				PARTITION BY store_id, agent_id, item_id, slot_id
+				PARTITION BY store_id, slot_id, agent_id, item_id
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			),
@@ -88,9 +87,7 @@ SELECT
     *
     , CONCAT_WS(
 	' | '
-	, CASE WHEN close_slot_balance<0 THEN 'ERROR: slot overdraft' ELSE NULL END
-	, CASE WHEN items_in_slot >1 THEN 'WARNING: slot has > 1 items' ELSE NULL END
-	, CASE WHEN close_slot_balance != expected_bin_qty THEN 'WARNING: unexpected slot balance' ELSE NULL END
-	, CASE WHEN slot_id = 'off_slot' THEN 'WARNING: Out-of-slot operation' ELSE NULL END
-) AS slot_errors
+	, CASE WHEN close_slot_balance<0 THEN 'OPER_ERROR: slot overdraft' ELSE NULL END
+	, CASE WHEN slot_id = 'off_slot' THEN 'OPER_WARNING: Out-of-slot operation' ELSE NULL END
+) AS slot_oper_errors
 FROM tab_with_balance

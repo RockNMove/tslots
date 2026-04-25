@@ -3,12 +3,12 @@ version: 2
 models:
   - name: warehouse__operations_with_balance
     description: >
-      Полная витрина всех движений по складу с нарастающими остатками и диагностикой ячеек.
+      Полная витрина всех движений по складу с нарастающими остатками и операционной диагностикой.
       Зерно: одна строка на операцию (agent × slot × item).
       Строится на основе int_operations_with_balance__agent_slot_item. Включает все типы операций, в том числе move.
       open/close_slot_balance  — остаток в конкретной ячейке.
       open/close_total_balance — остаток по товару у агента в целом.
-      slot_errors — текстовый флаг проблем: отрицательный остаток, несколько товаров в ячейке, неожиданный остаток.
+      slot_oper_errors — операционные аномалии: отрицательный остаток, операция без ячейки.
     columns:
       - name: agent_name
         description: "Название агента"
@@ -50,10 +50,8 @@ models:
         description: "Единица измерения"
       - name: expected_bin_qty
         description: "Ожидаемое кол-во товара в ячейке"
-      - name: items_in_slot
-        description: "Кол-во операций по данному товару в ячейке за день"
-      - name: slot_errors
-        description: "Диагностика: ERROR slot overdraft / WARNING slot has > 1 items / WARNING unexpected slot balance / NULL"
+      - name: slot_oper_errors
+        description: "Операционные аномалии: OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation / '' (нет ошибок)"
       - name: moment
         description: "Дата и время операции"
       - name: article
