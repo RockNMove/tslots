@@ -21,7 +21,9 @@ models:
       - name: agent_id
         description: "UUID контрагента"
       - name: depositor_id
-        description: "UUID поклажедателя"
+        description: "UUID поклажедателя — not_null: товары без поклажедателя не принимаются в ответственное хранение; целостность гарантируется на уровне МойСклад"
+        tests:
+          - not_null
       - name: expected_bin_qty
         description: "Ожидаемое кол-во товара в ячейке"
       - name: store_name

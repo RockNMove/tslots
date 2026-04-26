@@ -38,15 +38,13 @@ models:
         description: "Тип документа: demand, supply, loss, enter, move"
         tests:
           - accepted_values:
-              arguments:
-                values: ['demand', 'supply', 'loss', 'enter', 'move']
+              values: ['demand', 'supply', 'loss', 'enter', 'move']
       - name: op_type
         description: "Направление: in (приход) или out (расход)"
         tests:
           - not_null
           - accepted_values:
-              arguments:
-                values: ['in', 'out']
+              values: ['in', 'out']
 
   - name: int_prep__items_united_enriched
     description: >
@@ -110,8 +108,7 @@ models:
         tests:
           - not_null
           - accepted_values:
-              arguments:
-                values: ['deleted', 'active']
+              values: ['deleted', 'active']
 
   - name: int_prep__operations_united_cleaned
     description: >

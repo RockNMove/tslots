@@ -20,7 +20,7 @@ WITH
 			, i.depositor_id
 			, i.expected_bin_qty
 			, s.name AS store_name
-			, CASE WHEN sz.zone_name is NULL then 'off_slot' else sz.zone_name END AS zone_name
+			, CASE WHEN sz.zone_name is NULL then 'off_zone' else sz.zone_name END AS zone_name
 			, o.doc_type
 			, o.number AS doc_name
 			, o.moment

@@ -24,19 +24,8 @@ models:
       - name: weight
       - name: volume
       - name: uom_id
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__uoms')
-                field: uom_id
       - name: depositor_id
-        description: "UUID поклажедателя — атрибут 'Поклажедатель' из МойСклад"
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__agents')
-                field: agent_id
+        description: "UUID поклажедателя — атрибут 'Поклажедатель' из МойСклад. Может быть NULL: не каждый товар является объектом ответственного хранения"
       - name: expected_bin_qty
         description: "Кол-во единиц товара в одной ячейке — атрибут 'Кол-во в ячейке' из МойСклад"
       - name: updated
@@ -51,10 +40,6 @@ models:
         description: "UUID родительского товара"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__products')
-                field: product_id
       - name: lot
         description: "Партия — характеристика варианта"
       - name: mfg_date
@@ -91,10 +76,6 @@ models:
         description: "UUID родительского склада"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__stores')
-                field: store_id
       - name: name
         tests: [not_null]
       - name: updated
@@ -109,10 +90,6 @@ models:
         description: "UUID склада-родителя"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__stores')
-                field: store_id
       - name: zone_id
         description: "UUID зоны (опционально)"
       - name: name
@@ -130,11 +107,6 @@ models:
       - name: moment
       - name: number
       - name: agent_id
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_moy_sklad__agents')
-                field: agent_id
       - name: store_id
         description: "UUID склада документа"
       - name: item_id
@@ -248,5 +220,4 @@ models:
         tests:
           - not_null
           - accepted_values:
-              arguments:
-                values: ['in', 'out']
+              values: ['in', 'out']

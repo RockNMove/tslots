@@ -5,11 +5,11 @@ select
     raw_json->'product'->>'id'                                          as product_id,
     jsonb_path_query_first(
         raw_json,
-        '$.characteristics[*] ? (@.name == "партия").value'
+        '$.characteristics[*] ? (@.name == "Партия товара").value'
     ) #>> '{}'                                                          as lot,
     jsonb_path_query_first(
         raw_json,
-        '$.characteristics[*] ? (@.name == "дата выработки").value'
+        '$.characteristics[*] ? (@.name == "Дата выработки").value'
     ) #>> '{}'                                                          as mfg_date,
     (raw_json->>'updated')::timestamp                                 as updated
 from {{ source('moysklad', 'raw') }}
