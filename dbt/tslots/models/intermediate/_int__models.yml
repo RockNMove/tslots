@@ -7,8 +7,8 @@ models:
       Зерно: одна строка на операцию (agent × slot × item).
       INNER JOIN на int_prep__items_united_enriched отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
       store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
-      open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY store, slot, agent, item); операции без slot_id = 0.
-      open/close_total_balance — нарастающий остаток по товару у агента по всем ячейкам (PARTITION BY agent, item; move не учитывается).
+      open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY store, slot, item); операции без slot_id = 0.
+      open/close_total_balance — нарастающий остаток по товару по всем ячейкам (PARTITION BY item; move не учитывается).
       slot_oper_errors — операционные аномалии: OPER_ERROR slot overdraft, OPER_WARNING Out-of-slot operation.
       Аномалии баланса (несколько товаров в ячейке, расхождение с expected_bin_qty) перенесены в int_balance__slot_item_daily_spine.
     columns:
@@ -52,13 +52,13 @@ models:
       - name: move_out
         description: "Расход от перемещений: quantity если doc_type = move и quantity < 0, иначе 0"
       - name: open_slot_balance
-        description: "Остаток в ячейке до операции (PARTITION BY store, slot, agent, item)"
+        description: "Остаток в ячейке до операции (PARTITION BY store, slot, item)"
       - name: close_slot_balance
         description: "Остаток в ячейке после операции"
       - name: open_total_balance
-        description: "Остаток товара у агента по всем ячейкам до операции (move не учитывается)"
+        description: "Остаток товара по всем ячейкам до операции (move не учитывается)"
       - name: close_total_balance
-        description: "Остаток товара у агента по всем ячейкам после операции"
+        description: "Остаток товара по всем ячейкам после операции"
       - name: slot_oper_errors
         description: "Операционные аномалии: OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation / '' (нет ошибок)"
       - name: uom
@@ -86,19 +86,19 @@ models:
       - name: depositor_inn
         description: "ИНН поклажедателя"
 
-  - name: int_balance__agent_slot_item_daily_spine
+  - name: int_balance__slot_item_daily_spine
     description: >
-      Ежедневная сетка занятых ячеек с нарастающими балансами и флагом занятости.
-      Зерно: агент × склад × слот × товар × день (непрерывный ряд дат от первой операции до CURRENT_DATE).
-      store_id включён в зерно и store_name берётся из документа — гарантирует корректный склад
-      даже когда операция содержит склад без ячейки (slot_id = 'off_slot' общий для всех складов).
+      Атомарная ежедневная сетка занятых ячеек с нарастающими балансами, флагом занятости и балансовой диагностикой.
+      Зерно: склад × слот × товар × день (непрерывный ряд дат от первой операции до CURRENT_DATE).
+      store_id включён в зерно — гарантирует корректный склад даже когда операция содержит склад без ячейки
+      (slot_id = 'off_slot' общий для всех складов).
       Строки с is_used = 0 (пустые ячейки без оборота) исключены из финального SELECT.
       is_used = 1: товар присутствует (close > 0) либо полный оборот за день без остатка.
       is_used = 2: ошибка данных — отрицательный остаток.
-      Обогащение атрибутами (агент, ячейка, товар) выполняется последним — только на отфильтрованных строках.
+      items_in_slot — кол-во разновидностей товара с положительным остатком в ячейке в этот день.
+      slot_balance_errors — балансовые аномалии: BALANCE_WARNING slot has > 1 items, BALANCE_WARNING unexpected slot balance.
+      Обогащение атрибутами (ячейка, товар) выполняется последним — только на отфильтрованных строках.
     columns:
-      - name: agent_id
-        description: "UUID агента"
       - name: store_id
         description: "UUID склада"
       - name: slot_id
@@ -111,10 +111,6 @@ models:
       - name: moment_day
         description: "Дата"
         tests: [not_null]
-      - name: agent_inn
-        description: "ИНН агента"
-      - name: agent_name
-        description: "Название агента"
       - name: store_name
         description: "Название склада"
       - name: zone_name
@@ -138,7 +134,7 @@ models:
       - name: expected_bin_qty
         description: "Ожидаемое кол-во товара в ячейке (из карточки товара)"
       - name: open_slot_balance
-        description: "Остаток в ячейке на начало дня (PARTITION BY store, slot, agent, item)"
+        description: "Остаток в ячейке на начало дня (PARTITION BY store, slot, item)"
         tests: [not_null]
       - name: quantity
         description: "Нетто изменение остатка за день (все операции)"
@@ -147,10 +143,10 @@ models:
         description: "Остаток в ячейке на конец дня"
         tests: [not_null]
       - name: open_total_balance
-        description: "Остаток товара у агента по всем ячейкам на начало дня (PARTITION BY agent, item; move не учитывается)"
+        description: "Остаток товара по всем ячейкам на начало дня (PARTITION BY item; move не учитывается)"
         tests: [not_null]
       - name: close_total_balance
-        description: "Остаток товара у агента по всем ячейкам на конец дня"
+        description: "Остаток товара по всем ячейкам на конец дня"
         tests: [not_null]
       - name: real_in
         description: "Приход по реальным операциям (supply, enter) за день"
@@ -160,59 +156,9 @@ models:
         description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
       - name: move_out
         description: "Расход от перемещений за день — отрицательное число"
-      - name: is_used
-        description: "Флаг занятости: 1 — товар присутствует, 2 — ошибка данных (отрицательный остаток)"
-
-  - name: int_balance__slot_item_daily_spine
-    description: >
-      Ежедневная сетка остатков товаров в ячейках без разбивки по агентам.
-      Зерно: склад × слот × товар × день (непрерывный ряд дат).
-      Roll-up поверх int_balance__agent_slot_item_daily_spine: суммирует движения по всем агентам,
-      пересчитывает балансы на новом зерне.
-      open/close_total_balance — остаток товара по всем ячейкам (PARTITION BY item_id; агент не учитывается).
-      items_in_slot — кол-во разновидностей товара с положительным остатком в ячейке в этот день.
-      slot_balance_errors — балансовые аномалии: BALANCE_WARNING slot has > 1 items, BALANCE_WARNING unexpected slot balance.
-      Атрибуты агента и поклажедателя не включены.
-    columns:
-      - name: store_id
-        description: "UUID склада"
-      - name: slot_id
-        description: "UUID ячейки"
-      - name: item_id
-        description: "UUID товара/варианта"
-        tests: [not_null]
-      - name: moment_day
-        description: "Дата"
-        tests: [not_null]
-      - name: store_name
-        description: "Название склада"
-      - name: zone_name
-        description: "Название зоны"
-      - name: slot_name
-        description: "Название ячейки"
-      - name: item_name
-        description: "Полное название товара/варианта"
-      - name: expected_bin_qty
-        description: "Ожидаемое кол-во товара в ячейке (из карточки товара)"
-      - name: open_slot_balance
-        description: "Остаток в ячейке на начало дня (по всем агентам)"
-      - name: quantity
-        description: "Нетто изменение остатка за день (все агенты)"
-      - name: close_slot_balance
-        description: "Остаток в ячейке на конец дня (по всем агентам)"
-      - name: open_total_balance
-        description: "Остаток товара по всем ячейкам на начало дня"
-      - name: close_total_balance
-        description: "Остаток товара по всем ячейкам на конец дня"
-      - name: real_in
-        description: "Приход по реальным операциям за день (все агенты)"
-      - name: move_in
-        description: "Приход от перемещений за день (все агенты)"
-      - name: real_out
-        description: "Расход по реальным операциям за день — отрицательное число"
-      - name: move_out
-        description: "Расход от перемещений за день — отрицательное число"
       - name: items_in_slot
         description: "Кол-во разновидностей товара с close_slot_balance > 0 в ячейке в этот день (PARTITION BY store, slot, day)"
       - name: slot_balance_errors
         description: "Балансовые аномалии: BALANCE_WARNING slot has > 1 items / BALANCE_WARNING unexpected slot balance / '' (нет ошибок)"
+      - name: is_used
+        description: "Флаг занятости: 1 — товар присутствует, 2 — ошибка данных (отрицательный остаток)"

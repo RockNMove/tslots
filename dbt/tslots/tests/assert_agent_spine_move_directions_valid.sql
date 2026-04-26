@@ -1,4 +1,4 @@
--- Модель: int_balance__agent_slot_item_daily_spine
+-- Модель: int_balance__slot_item_daily_spine
 -- Инвариант: move_in >= 0 и move_out <= 0 для каждой строки.
 -- Ответственность: корректность знака memo-перемещений.
 --   move_in — приход товара в ячейку по документу перемещения, всегда >= 0.
@@ -10,10 +10,9 @@
 SELECT
     id
     , slot_id
-    , agent_id
     , item_id
     , moment_day
     , move_in
     , move_out
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE move_in < 0 OR move_out > 0

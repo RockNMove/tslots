@@ -55,28 +55,28 @@ WITH
 		*
 		, COALESCE(
 			SUM(quantity) OVER(
-				PARTITION BY store_id, slot_id, agent_id, item_id
+				PARTITION BY store_id, slot_id, item_id -- store_id включен в группировку, потому что операция может быть без слота
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 			),
 		0) AS open_slot_balance
 		, COALESCE(
 			SUM(quantity) OVER(
-				PARTITION BY store_id, slot_id, agent_id, item_id
+				PARTITION BY store_id, slot_id, item_id -- store_id включен в группировку, потому что операция может быть без слота
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			),
 		0) AS close_slot_balance
 		, COALESCE(
 			SUM(real_in+real_out) OVER(
-				PARTITION BY agent_id, item_id
+				PARTITION BY item_id
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 			),
 		0) AS open_total_balance
 		, COALESCE(
 			SUM(real_in+real_out) OVER(
-				PARTITION BY agent_id, item_id
+				PARTITION BY item_id
 				ORDER BY moment, id
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			),

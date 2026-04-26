@@ -1,4 +1,4 @@
--- Модель: int_balance__agent_slot_item_daily_spine
+-- Модель: int_balance__slot_item_daily_spine
 -- Инвариант: is_used принимает только значения 1 или 2 (0 отфильтрован в модели).
 -- Ответственность: полнота логики флага занятости ячейки.
 --   Значение 1 — ячейка физически занята (close > 0 или однодневный реальный оборот).
@@ -10,7 +10,6 @@
 SELECT
     id
     , slot_id
-    , agent_id
     , item_id
     , moment_day
     , is_used
@@ -18,5 +17,5 @@ SELECT
     , open_slot_balance
     , real_in
     , real_out
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE is_used NOT IN (1, 2)

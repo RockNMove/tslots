@@ -7,7 +7,7 @@ models:
       Зерно: одна строка на операцию (agent × slot × item).
       Строится на основе int_operations_with_balance__agent_slot_item. Включает все типы операций, в том числе move.
       open/close_slot_balance  — остаток в конкретной ячейке.
-      open/close_total_balance — остаток по товару у агента в целом.
+      open/close_total_balance — остаток по товару в целом.
       slot_oper_errors — операционные аномалии: отрицательный остаток, операция без ячейки.
     columns:
       - name: agent_name
@@ -35,9 +35,9 @@ models:
       - name: close_slot_balance
         description: "Остаток в ячейке после операции"
       - name: open_total_balance
-        description: "Остаток товара у агента по всем ячейкам до операции"
+        description: "Остаток товара по всем ячейкам до операции"
       - name: close_total_balance
-        description: "Остаток товара у агента по всем ячейкам после операции"
+        description: "Остаток товара по всем ячейкам после операции"
       - name: real_in
         description: "Приход по реальным операциям (supply, enter)"
       - name: move_in
@@ -75,13 +75,11 @@ models:
 
   - name: warehouse__balance_daily
     description: >
-      Витрина занятых ячеек по дням в разрезе агентов и поклажедателей.
-      Зерно: агент × слот × товар × день (только дни с is_used != 0).
-      Строится на основе int_balance__agent_slot_item_daily_spine.
+      Витрина занятых ячеек по дням в разрезе поклажедателей.
+      Зерно: слот × товар × день (только дни с is_used != 0).
+      Строится на основе int_balance__slot_item_daily_spine.
       Материализована как view — вычисления выполнены в intermediate (silver).
     columns:
-      - name: agent_name
-        description: "Название агента"
       - name: depositor_name
         description: "Название поклажедателя"
       - name: item_name
@@ -99,9 +97,9 @@ models:
       - name: close_slot_balance
         description: "Остаток в ячейке на конец дня"
       - name: open_total_balance
-        description: "Остаток товара у агента по всем ячейкам на начало дня"
+        description: "Остаток товара по всем ячейкам на начало дня"
       - name: close_total_balance
-        description: "Остаток товара у агента по всем ячейкам на конец дня"
+        description: "Остаток товара по всем ячейкам на конец дня"
       - name: real_in
         description: "Приход по реальным операциям (supply, enter)"
       - name: move_in
@@ -112,8 +110,6 @@ models:
         description: "Расход от перемещений — отрицательное число"
       - name: depositor_inn
         description: "ИНН поклажедателя"
-      - name: agent_inn
-        description: "ИНН агента"
       - name: zone_name
         description: "Название зоны"
       - name: article
@@ -124,21 +120,3 @@ models:
         description: "Партия"
       - name: mfg_date
         description: "Дата выработки"
-
-  - name: warehouse__balance_daily_no_agent
-    description: >
-      Остаток товаров в ячейках по дням без разбивки по агентам.
-      Зерно: слот × товар × день (только строки с close_slot_balance != 0).
-      Строится на основе int_balance__slot_item_daily_spine.
-      Используется когда разбивка по агенту не нужна — например, для отчёта по содержимому ячеек.
-    columns:
-      - name: store_name
-        description: "Название склада"
-      - name: moment_day
-        description: "Дата"
-      - name: item_name
-        description: "Название товара/варианта"
-      - name: slot_name
-        description: "Название ячейки"
-      - name: close_slot_balance
-        description: "Остаток товара в ячейке на конец дня"

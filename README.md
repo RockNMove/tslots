@@ -12,7 +12,7 @@
 
 В МойСклад каждый тип операции живёт в отдельном разделе: приёмки, реализации, перемещения, списания, оприходования. Чтобы отследить путь товара и найти причину расхождения, нужно одновременно смотреть несколько разделов и сопоставлять данные вручную. Кроме того, ни в одном из этих разделов нет возможности видеть рядом с каждой операцией входящий остаток, движение и исходящий остаток — как в стандартной карточке складского учёта.
 
-**tslots:** `warehouse__operations_with_balance` — единая таблица всех движений по всем типам документов. Каждая строка содержит `open_slot_balance`, `quantity`, `close_slot_balance` (по конкретной ячейке) и `open_total_balance`, `close_total_balance` (суммарно по товару у агента). Полная картина движений в одном запросе.
+**tslots:** `warehouse__operations_with_balance` — единая таблица всех движений по всем типам документов. Каждая строка содержит `open_slot_balance`, `quantity`, `close_slot_balance` (по конкретной ячейке) и `open_total_balance`, `close_total_balance` (суммарно по товару). Полная картина движений в одном запросе.
 
 ### 2. Нельзя построить отчёт по истории занятости ячеек
 
@@ -20,7 +20,7 @@
 
 Это критично для ответственного хранения: чтобы выставить клиенту счёт за посуточное хранение в ячейках, нужно знать точное количество ячейко-дней по каждому поклажедателю. Дополнительная сложность — перемещения: когда товар перекладывают из ячейки в ячейку, занятость в день транзита требует отдельной кастомной логики подсчёта, чтобы не исказить итоговый счёт.
 
-**tslots:** `int_balance__agent_slot_item_daily_spine` строит непрерывный ряд дат по каждой тройке (ячейка × агент × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily` и `focus__slots_used_monthly` дают готовые отчёты по занятости и агрегаты по месяцам — основу для выставления счетов поклажедателям.
+**tslots:** `int_balance__slot_item_daily_spine` строит непрерывный ряд дат по каждой паре (ячейка × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily` и `focus__slots_used_monthly` дают готовые отчёты по занятости и агрегаты по месяцам — основу для выставления счетов поклажедателям.
 
 ### 3. Нет SQL-доступа к данным
 
@@ -63,9 +63,10 @@ pipenv run dbt test --project-dir dbt/tslots --profiles-dir dbt/tslots
 
 ### Пересчитать silver и gold без staging
 
-Пересчитывает и тестирует intermediate + marts, не трогая bronze. Bronze берётся как есть из БД — команда предполагает что staging уже актуален.
 
 ```bash
+# Пересчитывает и тестирует intermediate + marts, не трогая bronze. Bronze берётся 
+# как есть из БД — команда предполагает что staging уже актуален.
 pipenv run dbt build --project-dir dbt/tslots --profiles-dir dbt/tslots --select path:models/intermediate path:models/marts
 ```
 
@@ -404,8 +405,8 @@ docker exec -it tslots-postgres pg_restore -U <DB_USER из .env> -d <DB_NAME и
 
 ```sql
 -- Пример: close_slot_balance должен равняться open_slot_balance + quantity
-SELECT slot_id, agent_id, item_id, moment_day
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+SELECT slot_id, item_id, moment_day
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE close_slot_balance != open_slot_balance + quantity
 ```
 
@@ -426,30 +427,22 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | `assert_operations_close_equals_open_plus_quantity` | `close_slot_balance = open_slot_balance + quantity` на уровне каждой операции (до агрегации по дням) |
 | `assert_operations_real_in_nonnegative` | `real_in >= 0` — физический приход никогда не отрицателен |
 | `assert_operations_real_out_nonpositive` | `real_out <= 0` — физический расход никогда не положителен |
-| `assert_operations_total_balance_continuity` | `open_total_balance` каждой строки равен `close_total_balance` предыдущей в той же партиции `(agent_id, item_id)` — нарастающий остаток без разрывов |
+| `assert_operations_total_balance_continuity` | `open_total_balance` каждой строки равен `close_total_balance` предыдущей в той же партиции `(item_id)` — нарастающий остаток без разрывов |
 | `assert_operations_depositor_id_not_null` | `depositor_id` не `NULL` ни в одной операции — критично для биллинга ответственного хранения |
 
-**Ежедневный spine по агентам** (`int_balance__agent_slot_item_daily_spine`):
+**Ежедневный spine** (`int_balance__slot_item_daily_spine`):
 
 | Тест | Что проверяет |
 |---|---|
-| `assert_agent_spine_close_equals_open_plus_quantity` | `close_slot_balance = open_slot_balance + quantity` по каждой тройке (slot, agent, item, day) |
+| `assert_agent_spine_close_equals_open_plus_quantity` | `close_slot_balance = open_slot_balance + quantity` по каждой паре (slot, item, day) |
 | `assert_agent_spine_open_equals_prev_close` | открытие следующего дня равно закрытию предыдущего (временна́я непрерывность) |
-| `assert_agent_spine_total_balance_consistent_per_day` | `close_total_balance` одинаков для всех слотов одного `(agent, item, day)` — проверяет корректность RANGE-окна |
+| `assert_agent_spine_total_balance_consistent_per_day` | `close_total_balance` одинаков для всех слотов одного `(item, day)` — проверяет корректность RANGE-окна |
 | `assert_agent_spine_is_used_valid_values` | `is_used` принимает только значения 1 или 2 (0 отфильтрован на уровне модели) |
 | `assert_agent_spine_quantity_equals_parts` | `quantity = real_in + real_out + move_in + move_out` — декомпозиция движений не теряет данных |
 | `assert_agent_spine_move_directions_valid` | `move_in >= 0` и `move_out <= 0` — направление memo-перемещений соответствует знаку |
 | `assert_agent_spine_no_future_dates` | `moment_day <= CURRENT_DATE` — generate_series не уходит в будущее |
 | `assert_agent_spine_negative_close_only_is_used_2` | отрицательный `close_slot_balance` допустим только при `is_used = 2` (ошибка данных) |
-| `assert_agent_spine_no_duplicate_grain` | каждая комбинация (slot, agent, item, day) встречается ровно один раз |
-
-**Ежедневный spine без агента** (`int_balance__slot_item_daily_spine`):
-
-| Тест | Что проверяет |
-|---|---|
-| `assert_slot_spine_close_equals_open_plus_quantity` | `close_slot_balance = open_slot_balance + quantity` для spine без агента |
-| `assert_slot_spine_open_equals_prev_close` | открытие следующего дня равно закрытию предыдущего (для spine без агента) |
-| `assert_slot_spine_total_balance_consistent_per_day` | `close_total_balance` одинаков для всех слотов одного `(item, day)` |
+| `assert_agent_spine_no_duplicate_grain` | каждая комбинация (slot, item, day) встречается ровно один раз |
 
 **Витрины** (gold):
 
@@ -466,10 +459,8 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | `assert_audit_no_duplicate_doc_id` | каждый `doc_id` встречается в `int_prep__audit_united_enriched` ровно один раз — дедупликация по последнему событию корректна |
 | `assert_cross__operations_cleaned_leq_united` | количество строк в `int_prep__operations_united_cleaned` не превышает `int_prep__operations_united` — фильтрация удалённых только убирает строки, не дублирует |
 | `assert_cross__united_count_matches_staging` | количество строк в `int_prep__operations_united` равно сумме строк во всех 5 staging-таблицах — UNION ALL не теряет и не дублирует операции |
-| `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__agent_slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__agent_slot_item` по зерну (slot, agent, item, day) |
-| `assert_cross__agent_spine_real_matches_operations` | `real_in` и `real_out` в agent_spine равны суммам из operations по зерну — физические движения не искажаются при агрегации по дням |
-| `assert_cross__slot_spine_qty_matches_agent_spine` | `quantity` в `int_balance__slot_item_daily_spine` равна сумме `quantity` из agent_spine по зерну (slot, item, day) — roll-up по агентам не теряет данных |
-| `assert_cross__slot_grains_covered_by_agent_spine` | каждое зерно (slot, item, day) из slot_spine присутствует хотя бы в одной строке agent_spine — данные в slot_spine всегда прослеживаются до конкретного агента |
+| `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__agent_slot_item` по зерну (slot, item, store, day) |
+| `assert_cross__agent_spine_real_matches_operations` | `real_in` и `real_out` в spine равны суммам из operations по тому же зерну — физические движения не искажаются при агрегации по дням |
 | `assert_cross__warehouse_ops_count_matches_int_operations` | количество строк в `warehouse__operations_with_balance` равно количеству строк в `int_operations_with_balance__agent_slot_item` — витрина не фильтрует и не дублирует строки |
 | `assert_cross__partners_count_matches_ops_non_move` | количество строк в `partners__nrb_stock_movements` равно количеству строк в int_operations с фильтром `doc_type != 'move'` — memo-перемещения корректно исключены |
 | `assert_cross__operations_slot_id_exists_in_slots` | каждый `slot_id` в операциях (кроме `off_slot`) присутствует в справочнике ячеек — нет ссылок на удалённые ячейки |
@@ -643,12 +634,10 @@ silver.*               ← prep: int_prep__operations_united,
      │                         int_prep__items_united_enriched,
      │                         int_prep__slots_and_zones
      │                    int_operations_with_balance__agent_slot_item,
-     │                    int_balance__agent_slot_item_daily_spine,
      │                    int_balance__slot_item_daily_spine
      ▼  [4] dbt run + test --select marts
 gold.*                 ← warehouse: warehouse__operations_with_balance,
-     │                              warehouse__balance_daily,
-     │                              warehouse__balance_daily_no_agent
+     │                              warehouse__balance_daily
      │                    partners: partners__nrb_stock_movements
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings_operations,
@@ -771,8 +760,7 @@ tslots отслеживает исключительно **движение то
 | int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
 | int_prep__slots_and_zones | Ячейки с денормализованными названиями зоны |
 | int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_oper_errors. INNER JOIN отфильтровывает услуги и наборы |
-| int_balance__agent_slot_item_daily_spine | Ежедневная сетка (agent × slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0 |
-| int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день) без агента. Roll-up поверх agent-spine |
+| int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0. Включает items_in_slot и slot_balance_errors |
 
 Все модели — таблицы.
 
@@ -782,7 +770,7 @@ tslots отслеживает исключительно **движение то
 
 - `open_slot_balance` — накопленное количество в ячейке строго до текущей операции (`ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING`, упорядочено по моменту операции)
 - `close_slot_balance` — после текущей операции (`CURRENT ROW`)
-- `open_total_balance` и `close_total_balance` — то же самое, но суммарно по товару у агента (`PARTITION BY agent_id, item_id`), только по real-движениям
+- `open_total_balance` и `close_total_balance` — то же самое, но суммарно по товару (`PARTITION BY item_id`), только по real-движениям
 
 **off_slot.** Если в документе МойСклад не указана ячейка, операция получает `slot_id = 'off_slot'`, `slot_name = 'off_slot'`, `zone_name = 'off_slot'`. Это виртуальная «мусорная» ячейка: она образует собственную партицию в оконных функциях, поэтому её баланс никак не смешивается с реальными слотами. В поле `slot_oper_errors` такие строки автоматически получают `OPER_WARNING: Out-of-slot operation`. Фильтровать off_slot в витринах можно по `slot_id != 'off_slot'` или по отсутствию этого предупреждения в `slot_oper_errors`.
 
@@ -806,18 +794,19 @@ tslots отслеживает исключительно **движение то
 
 #### Ежедневный spine — ключевая модель проекта
 
-`int_balance__agent_slot_item_daily_spine` строит **непрерывный ряд дат** по каждой тройке (slot × agent × item) — от первой операции до сегодня. Дни без операций заполняются нулями. Это позволяет считать ячейко-дни для выставления счетов.
+`int_balance__slot_item_daily_spine` строит **непрерывный ряд дат** по каждой паре (slot × item) — от первой операции до сегодня. Дни без операций заполняются нулями. Это позволяет считать ячейко-дни для выставления счетов.
 
 Алгоритм построения внутри модели:
 
-1. **daily_agg** — агрегирует операции по зерну (slot, agent, item, store, day): суммирует quantity, real_in, real_out, move_in, move_out
-2. **grain** — уникальные тройки зерна с датой первой операции (`MIN(moment_day)`)
-3. **grid** — декартово произведение: каждая тройка × каждый день от первой даты до сегодня (`generate_series`)
+1. **daily_agg** — агрегирует операции по зерну (slot, item, store, day): суммирует quantity, real_in, real_out, move_in, move_out
+2. **grain** — уникальные пары зерна с датой первой операции (`MIN(moment_day)`)
+3. **grid** — декартово произведение: каждая пара × каждый день от первой даты до сегодня (`generate_series`)
 4. **daily_balances** — LEFT JOIN grid с daily_agg, считает нарастающие балансы через оконные функции; дни без операций дают NULL от JOIN, который закрывается через COALESCE
 5. **daily_with_flag** — добавляет `is_used`
-6. Финальный SELECT — JOIN с таблицами атрибутов (агенты, ячейки, товары); WHERE отбрасывает строки с `is_used = 0`
+6. **daily_with_items_in_slot** — добавляет `items_in_slot` (количество товаров с положительным остатком в ячейке на день)
+7. Финальный SELECT — JOIN с таблицами атрибутов (ячейки, товары); вычисляет `slot_balance_errors`; WHERE отбрасывает строки с `is_used = 0`
 
-**Почему RANGE, а не ROWS для total_balance.** Оконные функции `open_total_balance` и `close_total_balance` используют `RANGE BETWEEN`, а не `ROWS BETWEEN`. Это принципиально: когда у одного (agent, item) на один день приходится несколько слотов, `ROWS BETWEEN` обрабатывает строки по одной и каждый слот получает разный накопленный итог. `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` включает все строки с одинаковым `moment_day` в одно окно — все слоты одного дня получают одинаковый `close_total_balance`. Для `open_total_balance` используется `RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL '1 day' PRECEDING` — всё строго до текущей даты при ORDER BY по date.
+**Почему RANGE, а не ROWS для total_balance.** Оконные функции `open_total_balance` и `close_total_balance` используют `RANGE BETWEEN`, а не `ROWS BETWEEN`. Это принципиально: когда у одного item на один день приходится несколько слотов, `ROWS BETWEEN` обрабатывает строки по одной и каждый слот получает разный накопленный итог. `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` включает все строки с одинаковым `moment_day` в одно окно — все слоты одного дня получают одинаковый `close_total_balance`. Для `open_total_balance` используется `RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL '1 day' PRECEDING` — всё строго до текущей даты при ORDER BY по date.
 
 **Флаг is_used** определяет, считать ли ячейку физически занятой в данный день:
 
@@ -828,8 +817,6 @@ tslots отслеживает исключительно **движение то
 | `2` | `close_slot_balance < 0` | Ошибка данных — отрицательный остаток. Строка попадает в витрину для диагностики |
 | `0` | Иначе | Ячейка пуста — строка отбрасывается в WHERE финального SELECT |
 
-`int_balance__slot_item_daily_spine` — roll-up поверх agent-spine. GROUP BY (slot × item × day), суммируя по всем агентам. Балансы пересчитываются на новом зерне. Используется для витрины без разбивки по агенту.
-
 ---
 
 ### Слой gold — marts
@@ -837,10 +824,9 @@ tslots отслеживает исключительно **движение то
 | Папка | Модель | Источник | Описание |
 |---|---|---|---|
 | warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_oper_errors |
-| warehouse | warehouse__balance_daily | int_balance__agent_slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по агенту и поклажедателю |
-| warehouse | warehouse__balance_daily_no_agent | int_balance__slot_item_daily_spine | Остаток товара в ячейке по дням без разбивки по агенту, только ненулевые строки |
+| warehouse | warehouse__balance_daily | int_balance__slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по поклажедателям |
 | partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
-| focus | focus__slots_used_monthly | int_balance__agent_slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе агентов и поклажедателей |
+| focus | focus__slots_used_monthly | int_balance__slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе поклажедателей |
 | focus | focus__errors_warnings_operations | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_oper_errors != '') — для мониторинга в Metabase |
 | focus | focus__slot_errors_warnings_balance | int_balance__slot_item_daily_spine | Балансовые аномалии ячеек на последний день (slot_balance_errors != '') — для мониторинга в Metabase |
 
@@ -886,12 +872,10 @@ tslots/
 │           │   │                   int_prep__items_united_enriched,
 │           │   │                   int_prep__slots_and_zones
 │           │   └── (корень)        int_operations_with_balance__agent_slot_item,
-│           │                       int_balance__agent_slot_item_daily_spine,
 │           │                       int_balance__slot_item_daily_spine
 │           └── marts/
 │               ├── warehouse/   ← warehouse__operations_with_balance,
-│               │                   warehouse__balance_daily,
-│               │                   warehouse__balance_daily_no_agent
+│               │                   warehouse__balance_daily
 │               ├── partners/    ← partners__nrb_stock_movements
 │               └── focus/       ← focus__slots_used_monthly,
 │                                   focus__errors_warnings_operations,

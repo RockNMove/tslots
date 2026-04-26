@@ -1,4 +1,4 @@
--- Модель: int_balance__agent_slot_item_daily_spine
+-- Модель: int_balance__slot_item_daily_spine
 -- Инвариант: quantity = real_in + real_out + move_in + move_out для каждой строки.
 -- Ответственность: целостность декомпозиции движений.
 --   quantity — суммарное движение за день. Оно должно полностью раскладываться
@@ -10,7 +10,6 @@
 SELECT
     id
     , slot_id
-    , agent_id
     , item_id
     , moment_day
     , quantity
@@ -19,5 +18,5 @@ SELECT
     , move_in
     , move_out
     , (real_in + real_out + move_in + move_out) AS parts_sum
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE quantity != real_in + real_out + move_in + move_out

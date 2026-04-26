@@ -1,4 +1,4 @@
--- Модель: int_balance__agent_slot_item_daily_spine (основа для warehouse__balance_daily)
+-- Модель: int_balance__slot_item_daily_spine (основа для warehouse__balance_daily)
 -- Инвариант: строк с is_used = 0 не существует в модели после фильтрации.
 -- Ответственность: гарантия что пустые ячейки не попадают в аналитику.
 --   is_used = 0 означает что ячейка в этот день не была занята. Такие строки
@@ -9,11 +9,10 @@
 SELECT
     id
     , slot_id
-    , agent_id
     , item_id
     , moment_day
     , is_used
     , close_slot_balance
     , open_slot_balance
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE is_used = 0

@@ -32,6 +32,7 @@ models:
       - name: depositor_id
         description: "UUID поклажедателя — атрибут 'Поклажедатель' из МойСклад"
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('stg_moy_sklad__agents')

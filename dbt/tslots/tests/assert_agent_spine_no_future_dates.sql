@@ -1,4 +1,4 @@
--- Модель: int_balance__agent_slot_item_daily_spine
+-- Модель: int_balance__slot_item_daily_spine
 -- Инвариант: moment_day <= CURRENT_DATE для каждой строки.
 -- Ответственность: корректность верхней границы generate_series.
 --   Spine строится от даты первой операции до CURRENT_DATE включительно.
@@ -9,9 +9,8 @@
 SELECT
     id
     , slot_id
-    , agent_id
     , item_id
     , moment_day
     , CURRENT_DATE AS today
-FROM {{ ref('int_balance__agent_slot_item_daily_spine') }}
+FROM {{ ref('int_balance__slot_item_daily_spine') }}
 WHERE moment_day > CURRENT_DATE

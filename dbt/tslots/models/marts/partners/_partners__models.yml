@@ -6,7 +6,7 @@ models:
       Отчёт движений товаров с нарастающим остатком — для партнёров.
       Зерно: одна строка на операцию (без move).
       Строится на основе int_operations_with_balance__agent_slot_item. Перемещения (move) исключены.
-      open_balance / close_balance — нарастающий остаток по всем складам в разрезе agent × item; move не учитывается.
+      open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
     columns:
       - name: agent_name
         description: "Название агента"
@@ -27,8 +27,8 @@ models:
       - name: doc_name
         description: "Номер документа"
       - name: open_balance
-        description: "Остаток товара у агента до операции"
+        description: "Остаток товара до операции"
       - name: quantity
         description: "Количество (отрицательное для расхода)"
       - name: close_balance
-        description: "Остаток товара у агента после операции"
+        description: "Остаток товара после операции"

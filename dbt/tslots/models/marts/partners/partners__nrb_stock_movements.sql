@@ -1,7 +1,7 @@
 -- partners__nrb_stock_movements.sql — отчёт движений товаров с нарастающим остатком (для партнёров).
 -- Строится на основе int_operations_with_balance__agent_slot_item.
 -- Перемещения (move) исключены — только реальный приход и расход.
--- open_balance / close_balance — нарастающий остаток по всем складам в разрезе (agent_id, item_id); move не учитывается.
+-- open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
 WITH tab AS (
 	SELECT
 		agent_name
@@ -15,7 +15,7 @@ WITH tab AS (
 		, doc_name
 		, COALESCE(
 			SUM(CASE WHEN doc_type = 'move' THEN 0 ELSE quantity END) OVER (
-				PARTITION BY agent_id, item_id
+				PARTITION BY item_id
 				ORDER BY moment
 				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
 			),
@@ -23,7 +23,7 @@ WITH tab AS (
 		, quantity
 		, COALESCE(
 			SUM(CASE WHEN doc_type = 'move' THEN 0 ELSE quantity END) OVER (
-				PARTITION BY agent_id, item_id
+				PARTITION BY item_id
 				ORDER BY moment
 				ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			),
