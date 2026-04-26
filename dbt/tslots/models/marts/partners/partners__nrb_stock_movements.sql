@@ -8,6 +8,7 @@ WITH tab AS (
 		, agent_inn
 		, article
 		, item_name
+		, product
 		, lot
 		, mfg_date
 		, moment AS doc_time

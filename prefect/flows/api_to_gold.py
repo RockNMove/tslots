@@ -76,29 +76,18 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
         offset += LIMIT
     return rows
 
-def get_max_audit_moment() -> str | None:
-    """MAX(moment) + 1ms из audit-бронзы. None если таблица пуста или не существует."""
+def get_max_operations_updated() -> str | None:
+    """MAX(updated) + 1ms из silver.int_prep__operations_united.
+    Отражает до какой точки времени мы дошли на прошлом прогоне пайплайна.
+    Аудит тянем именно с этой точки — любое удаление после неё мы не видели.
+    None если silver не существует (холодный запуск)."""
     try:
         with ENGINE.connect() as conn:
             row = conn.execute(
-                text("SELECT MAX(moment) FROM bronze.stg_moy_sklad__audit_deleted")
+                text("SELECT MAX(updated) FROM silver.int_prep__operations_united")
             ).fetchone()
         if row and row[0] is not None:
             return (row[0] + timedelta(milliseconds=1)).isoformat(sep=' ', timespec='milliseconds')
-        return None
-    except Exception:
-        return None
-
-
-def get_min_operations_moment() -> str | None:
-    """MIN(moment) из operations — стартовая точка для первой выкачки аудита."""
-    try:
-        with ENGINE.connect() as conn:
-            row = conn.execute(
-                text("SELECT MIN(moment) FROM silver.int_prep__operations_united")
-            ).fetchone()
-        if row and row[0] is not None:
-            return row[0].isoformat(sep=' ', timespec='milliseconds')
         return None
     except Exception:
         return None
@@ -185,10 +174,10 @@ def ingest():
         logger.info(f"{endpoint}: {len(rows)} записей")
 
     # --- Аудит удалений и восстановлений ---
-    # Холодный запуск (нет операций) — пропускаем: удалённых документов всё равно нет в bronze.
-    # Первый запуск аудита (audit-бронза пуста, но операции есть) — выкачиваем с MIN(moment) операций.
-    # Тёплый запуск — инкрементально с MAX(moment) audit-бронзы + 1ms.
-    audit_since = get_max_audit_moment() or get_min_operations_moment()
+    # Холодный запуск (silver не существует) — пропускаем: данные в таблицах отражают истину.
+    # Тёплый запуск — аудит с MAX(updated из операций) + 1ms, т.е. с момента последнего прогона.
+    # Любое удаление совершённое между запусками попадёт в это окно.
+    audit_since = get_max_operations_updated()
     if audit_since is None:
         logger.info("audit: операций нет — пропускаем")
     else:
