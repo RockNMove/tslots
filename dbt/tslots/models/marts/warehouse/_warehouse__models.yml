@@ -73,6 +73,35 @@ models:
       - name: depositor_inn
         description: "ИНН поклажедателя"
 
+  - name: warehouse__balance_daily_no_slots
+    description: >
+      Остатки и оборот по товарам без разбивки по ячейкам.
+      Агрегирует int_balance__slot_item_daily_spine по зерну товар × день.
+      Материализована как view.
+    columns:
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: moment_day
+        description: "Дата"
+      - name: real_quantity
+        description: "Нетто реальный оборот за день (real_in + real_out)"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам на начало дня"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам на конец дня"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+
   - name: warehouse__balance_daily
     description: >
       Витрина занятых ячеек по дням в разрезе поклажедателей.

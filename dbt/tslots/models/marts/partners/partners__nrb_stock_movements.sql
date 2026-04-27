@@ -4,8 +4,8 @@
 -- open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
 WITH tab AS (
 	SELECT
-		agent_name
-		, agent_inn
+		depositor_name
+		, depositor_inn
 		, article
 		, item_name
 		, product
@@ -34,4 +34,4 @@ WITH tab AS (
 SELECT *
 FROM tab
 WHERE doc_type != 'move'
-ORDER BY agent_name, item_name, doc_time
+ORDER BY depositor_name, item_name, doc_time

@@ -639,7 +639,8 @@ silver.*               ← prep: int_prep__operations_united,
      │                    int_balance__slot_item_daily_spine
      ▼  [4] dbt run + test --select marts
 gold.*                 ← warehouse: warehouse__operations_with_balance,
-     │                              warehouse__balance_daily
+     │                              warehouse__balance_daily,
+     │                              warehouse__balance_daily_no_slots
      │                    partners: partners__nrb_stock_movements
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings_operations,
@@ -841,6 +842,7 @@ tslots отслеживает исключительно **движение то
 |---|---|---|---|
 | warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_oper_errors |
 | warehouse | warehouse__balance_daily | int_balance__slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по поклажедателям |
+| warehouse | warehouse__balance_daily_no_slots | int_balance__slot_item_daily_spine | Остатки и оборот по товарам без разбивки по ячейкам (зерно: товар × день) |
 | partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
 | focus | focus__slots_used_monthly | int_balance__slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе поклажедателей |
 | focus | focus__errors_warnings_operations | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_oper_errors != '') — для мониторинга в Metabase |
@@ -891,7 +893,8 @@ tslots/
 │           │                       int_balance__slot_item_daily_spine
 │           └── marts/
 │               ├── warehouse/   ← warehouse__operations_with_balance,
-│               │                   warehouse__balance_daily
+│               │                   warehouse__balance_daily,
+│               │                   warehouse__balance_daily_no_slots
 │               ├── partners/    ← partners__nrb_stock_movements
 │               └── focus/       ← focus__slots_used_monthly,
 │                                   focus__errors_warnings_operations,

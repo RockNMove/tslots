@@ -8,14 +8,16 @@ models:
       Строится на основе int_operations_with_balance__agent_slot_item. Перемещения (move) исключены.
       open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
     columns:
-      - name: agent_name
-        description: "Название агента"
-      - name: agent_inn
-        description: "ИНН агента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
       - name: article
         description: "Артикул товара"
       - name: item_name
         description: "Название позиции"
+      - name: product
+        description: "Название родительского товара"
       - name: lot
         description: "Партия"
       - name: mfg_date
@@ -27,8 +29,8 @@ models:
       - name: doc_name
         description: "Номер документа"
       - name: open_balance
-        description: "Остаток товара до операции"
+        description: "Остаток товара до операции (без учёта перемещений)"
       - name: quantity
         description: "Количество (отрицательное для расхода)"
       - name: close_balance
-        description: "Остаток товара после операции"
+        description: "Остаток товара после операции (без учёта перемещений)"

@@ -37,4 +37,4 @@ SELECT
 	, agent_inn
 	, depositor_inn
 FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
-ORDER BY agent_name, item_name, store_name, slot_name, moment
+ORDER BY agent_name, depositor_name, item_name, store_name, slot_name, moment
