@@ -24,5 +24,5 @@ WHERE l.entity = 'loss'
 -- если выполняется
 {% if is_incremental() %}
 -- то приклеить к основному запросу это
-  AND (l.raw_json->>'updated')::timestamp > (SELECT MAX(updated) FROM {{ this }})
+  AND (l.raw_json->>'updated')::timestamp > COALESCE((SELECT MAX(updated) FROM {{ this }}), '1970-01-01'::timestamp)
 {% endif %}

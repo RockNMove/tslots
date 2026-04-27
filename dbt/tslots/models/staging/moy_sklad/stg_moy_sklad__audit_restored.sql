@@ -13,5 +13,5 @@ SELECT
 FROM {{ source('moysklad', 'raw') }}
 WHERE entity = 'audit_restored'
 {% if is_incremental() %}
-  AND (raw_json->>'moment')::timestamp > (SELECT MAX(moment) FROM {{ this }})
+  AND (raw_json->>'moment')::timestamp > COALESCE((SELECT MAX(moment) FROM {{ this }}), '1970-01-01'::timestamp)
 {% endif %}

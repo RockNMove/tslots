@@ -10,5 +10,5 @@ where entity = 'store'
 -- если выполняется
 {% if is_incremental() %}
 -- то приклеить к основному запросу это
-    and (raw_json->>'updated')::timestamp > (select max(updated) from {{ this }})
+    and (raw_json->>'updated')::timestamp > COALESCE((select max(updated) from {{ this }}), '1970-01-01'::timestamp)
 {% endif %}
