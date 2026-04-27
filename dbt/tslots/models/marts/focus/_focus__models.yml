@@ -1,19 +1,6 @@
 version: 2
 
 models:
-  - name: focus__errors_runs
-    description: >
-      Витрина неуспешных запусков Prefect pipeline.
-      Строки из tech.pipeline_finish_log где status != 'ok'.
-      Используется для мониторинга сбоев pipeline в Metabase.
-    columns:
-      - name: pg_server_at
-        description: "Время завершения запуска (время PostgreSQL-сервера)"
-        tests: [not_null]
-      - name: status
-        description: "Статус завершения — всегда 'error' в этой витрине"
-        tests: [not_null]
-
   - name: focus__errors_warnings_operations
     description: >
       Витрина операционных аномалий — строки из int_operations_with_balance__agent_slot_item

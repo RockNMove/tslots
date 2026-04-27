@@ -1,4 +1,4 @@
--- int_enrich__items_united_extended.sql — единый справочник позиций (товары и варианты).
+-- int_prep__items_united_enriched.sql — единый справочник позиций (товары и варианты).
 -- В МойСклад операции могут ссылаться как на product_id, так и на variant_id.
 -- Эта модель объединяет оба типа под общим item_id с денормализованными атрибутами:
 -- uom, depositor, lot, mfg_date — готово для JOIN в int_operations_with_balance__agent_slot_item.
@@ -51,6 +51,6 @@ WITH items AS (
     LEFT JOIN {{ ref('stg_moy_sklad__agents') }} a ON p.depositor_id=a.agent_id
 )
 SELECT
-    ROW_NUMBER() OVER () AS id
+    ROW_NUMBER() OVER (ORDER BY item_id) AS id
     , *
 FROM items

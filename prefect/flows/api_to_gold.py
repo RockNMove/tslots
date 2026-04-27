@@ -40,7 +40,8 @@ DBT_PROJECT_DIR = os.environ["DBT_PROJECT_DIR"]
 # HELPERS
 
 
-def _dbt(logger, *args: str) -> None:
+def _dbt(*args: str) -> None:
+    logger = get_run_logger()
     cmd = ["dbt", *args]
     logger.info(" ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=DBT_PROJECT_DIR)
@@ -141,7 +142,7 @@ def _fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     return result
 
 
-def _ensure_finish_log_table() -> None:
+def _write_run_status(status: str) -> None:
     with ENGINE.connect() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS tech"))
         conn.execute(text("""
@@ -150,11 +151,6 @@ def _ensure_finish_log_table() -> None:
                 status       TEXT        NOT NULL
             )
         """))
-        conn.commit()
-
-
-def _write_run_status(status: str) -> None:
-    with ENGINE.connect() as conn:
         conn.execute(
             text("INSERT INTO tech.pipeline_finish_log (pg_server_at, status) VALUES (NOW(), :s)"),
             {"s": status},
@@ -189,7 +185,7 @@ def ingest():
         params = dict(cfg["params"])
 
         # Инкрементальная фильтрация: строгий > работает не во всех endpoint.
-        # Используем updated>=(max_date + 1 millisecond), за это отвечат функция get_max_updated
+        # Используем updated>=(max_date + 1 millisecond), за это отвечает _get_max_updated.
         # Запись с updated = max_updated уже загружена в прошлом запуске и есть в bronze.
         since = _get_max_updated(cfg["aim_table"])
         if since:
@@ -245,18 +241,13 @@ def ingest():
 
 @task(name="dbt_run", retries=1, retry_delay_seconds=30)
 def dbt_run(layer: str) -> None:
-    """Собирает и тестирует указанный слой: staging | intermediate | marts.
-    Кросс-слойные тесты (tag:cross_layer) исключаются — они запускаются отдельно в конце."""
-    logger = get_run_logger()
-    _dbt(logger, "run",  "--select", layer)
-    _dbt(logger, "test", "--select", layer, "--exclude", "tag:cross_layer")
+    _dbt("run",  "--select", layer)
+    _dbt("test", "--select", layer, "--exclude", "tag:cross_layer")
 
 
 @task(name="dbt_test_cross_layer", retries=1, retry_delay_seconds=30)
 def dbt_test_cross_layer() -> None:
-    """Кросс-слойные тесты (silver vs gold) — запускаются после всех трёх слоёв."""
-    logger = get_run_logger()
-    _dbt(logger, "test", "--select", "tag:cross_layer")
+    _dbt("test", "--select", "tag:cross_layer")
 
 # FLOW
 
@@ -267,7 +258,6 @@ def dbt_test_cross_layer() -> None:
 )
 def api_to_gold():
     logger = get_run_logger()
-    _ensure_finish_log_table()
     try:
         logger.info("Шаг 1/5 — ингестация...")
         ingest()

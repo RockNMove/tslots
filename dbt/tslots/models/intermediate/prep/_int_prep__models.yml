@@ -53,6 +53,9 @@ models:
       эта модель объединяет оба типа под общим item_id.
       Содержит uom, depositor, lot, mfg_date, expected_bin_qty.
     columns:
+      - name: id
+        description: "Порядковый номер строки (ROW_NUMBER ORDER BY item_id) — суррогатный ключ для витрин"
+        tests: [not_null, unique]
       - name: item_id
         description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
         tests: [not_null, unique]
