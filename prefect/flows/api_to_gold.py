@@ -2,7 +2,7 @@
 api_to_gold.py — единственный flow проекта tslots.
 
 Запускается по расписанию каждый день в 00:00 МСК.
-Четыре шага выполняются строго последовательно.
+Пять шагов выполняются строго последовательно.
 
 Запуск вручную через Prefect UI:
     Deployments → tslots-daily → Run → Quick Run
@@ -40,7 +40,15 @@ DBT_PROJECT_DIR = os.environ["DBT_PROJECT_DIR"]
 # HELPERS
 
 
-def get_max_updated(table: str) -> str | None:
+def _dbt(logger, *args: str) -> None:
+    cmd = ["dbt", *args]
+    logger.info(" ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=DBT_PROJECT_DIR)
+    if result.returncode != 0:
+        raise RuntimeError(f"dbt {' '.join(args)} завершился с ошибкой\n{result.stdout}")
+
+
+def _get_max_updated(table: str) -> str | None:
     """
     Возвращает MAX(updated) + 1 millisecond из bronze-таблицы в виде строки 'YYYY-MM-DD HH:MM:SS.mmm'.
     Миллисекунды важны: без них запись с .490 проходит фильтр updated>HH:MM:SS каждый раз.
@@ -58,7 +66,7 @@ def get_max_updated(table: str) -> str | None:
         return None
 
 
-def fetch(endpoint: str, params: dict) -> list[dict]:
+def _fetch(endpoint: str, params: dict) -> list[dict]:
     """Обходит все страницы API, возвращает плоский список записей."""
     rows, offset = [], 0
     while True:
@@ -77,8 +85,8 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
     return rows
 
 
-def get_max_operations_updated() -> str | None:
-    """MAX(updated) + 1ms из silver.int_prep__operations_united.
+def _get_max_operations_updated() -> str | None:
+    """MAX(updated) + 1ms из silver.int_prep__operations_united_cleaned.
     Отражает до какой точки времени мы дошли на прошлом прогоне пайплайна.
     Аудит тянем именно с этой точки — любое удаление после неё мы не видели.
     None если silver не существует (холодный запуск)."""
@@ -94,7 +102,7 @@ def get_max_operations_updated() -> str | None:
         return None
 
 
-def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
+def _fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     """Выкачивает аудит двухуровнево: контексты → события.
     Возвращает плоский список {doc_id, entity_type, event_type, moment, name}.
     Фильтрует только puttorecyclebin и restorefromrecyclebin — лишние event_type отбрасываются.
@@ -133,6 +141,27 @@ def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     return result
 
 
+def _ensure_finish_log_table() -> None:
+    with ENGINE.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS tech"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tech.pipeline_finish_log (
+                pg_server_at TIMESTAMPTZ NOT NULL,
+                status       TEXT        NOT NULL
+            )
+        """))
+        conn.commit()
+
+
+def _write_run_status(status: str) -> None:
+    with ENGINE.connect() as conn:
+        conn.execute(
+            text("INSERT INTO tech.pipeline_finish_log (pg_server_at, status) VALUES (NOW(), :s)"),
+            {"s": status},
+        )
+        conn.commit()
+
+
 # TASKS
 
 
@@ -162,7 +191,7 @@ def ingest():
         # Инкрементальная фильтрация: строгий > работает не во всех endpoint.
         # Используем updated>=(max_date + 1 millisecond), за это отвечат функция get_max_updated
         # Запись с updated = max_updated уже загружена в прошлом запуске и есть в bronze.
-        since = get_max_updated(cfg["aim_table"])
+        since = _get_max_updated(cfg["aim_table"])
         if since:
             existing = params.get("filter", "")
             params["filter"] = f"{existing};updated>={since}" if existing else f"updated>={since}"
@@ -170,7 +199,7 @@ def ingest():
         else:
             logger.info(f"{endpoint}: полная загрузка")
 
-        rows = fetch(endpoint, params)
+        rows = _fetch(endpoint, params)
         for row in rows:
             records.append({"entity": endpoint, "raw_json": row})
         logger.info(f"{endpoint}: {len(rows)} записей")
@@ -179,7 +208,7 @@ def ingest():
     # Холодный запуск (silver не существует) — пропускаем: данные в таблицах отражают истину.
     # Тёплый запуск — аудит с MAX(updated из активных операций) + 1ms, т.е. с момента самой новой операции из существующих.
     # Любое удаление совершённое между запусками попадёт в это окно.
-    audit_since = get_max_operations_updated()
+    audit_since = _get_max_operations_updated()
     if audit_since is None:
         logger.info("audit: операций нет — пропускаем")
     else:
@@ -189,7 +218,7 @@ def ingest():
             ("puttorecyclebin",      "audit_deleted"),
             ("restorefromrecyclebin", "audit_restored"),
         ]:
-            rows = fetch_audit_doc_ids(event_type, audit_since)
+            rows = _fetch_audit_doc_ids(event_type, audit_since)
             for row in rows:
                 records.append({"entity": entity_name, "raw_json": row})
             logger.info(f"{entity_name}: {len(rows)} записей")
@@ -212,14 +241,6 @@ def ingest():
         dtype={"raw_json": JSONB},
     )
     logger.info("✅ Данные записаны в layer_raw.raw")
-
-
-def _dbt(logger, *args: str) -> None:
-    cmd = ["dbt", *args]
-    logger.info(" ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=DBT_PROJECT_DIR)
-    if result.returncode != 0:
-        raise RuntimeError(f"dbt {' '.join(args)} завершился с ошибкой\n{result.stdout}")
 
 
 @task(name="dbt_run", retries=1, retry_delay_seconds=30)
@@ -246,20 +267,25 @@ def dbt_test_cross_layer() -> None:
 )
 def api_to_gold():
     logger = get_run_logger()
+    _ensure_finish_log_table()
+    try:
+        logger.info("Шаг 1/5 — ингестация...")
+        ingest()
 
-    logger.info("Шаг 1/5 — ингестация...")
-    ingest()
+        logger.info("Шаг 2/5 — bronze (staging)...")
+        dbt_run("staging")
 
-    logger.info("Шаг 2/5 — bronze (staging)...")
-    dbt_run("staging")
+        logger.info("Шаг 3/5 — silver (intermediate)...")
+        dbt_run("intermediate")
 
-    logger.info("Шаг 3/5 — silver (intermediate)...")
-    dbt_run("intermediate")
+        logger.info("Шаг 4/5 — gold (marts)...")
+        dbt_run("marts")
 
-    logger.info("Шаг 4/5 — gold (marts)...")
-    dbt_run("marts")
+        logger.info("Шаг 5/5 — кросс-слойные тесты...")
+        dbt_test_cross_layer()
 
-    logger.info("Шаг 5/5 — кросс-слойные тесты...")
-    dbt_test_cross_layer()
-
-    logger.info("✅ Pipeline завершён успешно")
+        _write_run_status("ok")
+        logger.info("✅ Pipeline завершён успешно")
+    except Exception:
+        _write_run_status("error")
+        raise
