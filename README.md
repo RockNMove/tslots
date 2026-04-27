@@ -900,3 +900,15 @@ tslots/
 └── test_notebooks/
     └── get_jsons.py           ← отладка: запрашивает все сущности API и сохраняет JSON в temp/raw_json/
 ```
+
+#### Схемы PostgreSQL
+
+| Схема | Создаётся | Описание |
+|---|---|---|
+| `layer_raw` | Prefect (ingest) | Сырые JSON-данные из API — одна таблица `raw`, перезаписывается каждый запуск |
+| `bronze` | dbt (staging) | Разобранные и типизированные данные МойСклад |
+| `silver` | dbt (intermediate) | Обогащённые и соединённые модели, бизнес-логика |
+| `gold` | dbt (marts) | Финальные витрины для Metabase и SQL-клиентов |
+| `tech` | Prefect (`_write_run_status`) | Служебные таблицы — **вне dbt**, создаются напрямую через SQLAlchemy |
+
+`tech.pipeline_run_log` — единственная таблица в схеме `tech`. Пишется после каждого запуска пайплайна (независимо от исхода): `id`, `started_at`, `finished_at`, `total_run_time` (PostgreSQL `INTERVAL`), `status` (`ok` / `error`).

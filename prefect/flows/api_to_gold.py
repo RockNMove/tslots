@@ -142,18 +142,29 @@ def _fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     return result
 
 
-def _write_run_status(status: str) -> None:
+def _get_pg_now():
+    with ENGINE.connect() as conn:
+        return conn.execute(text("SELECT NOW()")).fetchone()[0]
+
+
+def _write_run_status(status: str, started_at) -> None:
     with ENGINE.connect() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS tech"))
         conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS tech.pipeline_finish_log (
-                pg_server_at TIMESTAMPTZ NOT NULL,
-                status       TEXT        NOT NULL
+            CREATE TABLE IF NOT EXISTS tech.pipeline_run_log (
+                id             SERIAL      PRIMARY KEY,
+                started_at     TIMESTAMPTZ NOT NULL,
+                finished_at    TIMESTAMPTZ NOT NULL,
+                total_run_time INTERVAL    NOT NULL,
+                status         TEXT        NOT NULL
             )
         """))
         conn.execute(
-            text("INSERT INTO tech.pipeline_finish_log (pg_server_at, status) VALUES (NOW(), :s)"),
-            {"s": status},
+            text("""
+                INSERT INTO tech.pipeline_run_log (started_at, finished_at, total_run_time, status)
+                VALUES (:started_at, NOW(), NOW() - :started_at, :status)
+            """),
+            {"started_at": started_at, "status": status},
         )
         conn.commit()
 
@@ -258,6 +269,7 @@ def dbt_test_cross_layer() -> None:
 )
 def api_to_gold():
     logger = get_run_logger()
+    started_at = _get_pg_now()
     try:
         logger.info("Шаг 1/5 — ингестация...")
         ingest()
@@ -274,8 +286,8 @@ def api_to_gold():
         logger.info("Шаг 5/5 — кросс-слойные тесты...")
         dbt_test_cross_layer()
 
-        _write_run_status("ok")
+        _write_run_status("ok", started_at)
         logger.info("✅ Pipeline завершён успешно")
     except Exception:
-        _write_run_status("error")
+        _write_run_status("error", started_at)
         raise
