@@ -8,7 +8,7 @@
 -- При нарушении: фильтр WHERE doc_type != 'move' удалён или обойдён в partners__nrb_stock_movements,
 --   либо в staging-данных doc_type 'move' маркирован как другой тип документа.
 SELECT
-    agent_name
+    depositor_name
     , item_name
     , doc_time
     , doc_name
