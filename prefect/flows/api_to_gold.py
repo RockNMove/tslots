@@ -25,7 +25,7 @@ DB_USER = os.environ["DB_USER"]
 DB_PASS = os.environ["DB_PASSWORD"]
 DB_NAME = os.environ["DB_NAME"]
 
-BASE_URL  = "https://api.moysklad.ru/api/remap/1.2/entity"
+BASE_URL = "https://api.moysklad.ru/api/remap/1.2/entity"
 AUDIT_URL = "https://api.moysklad.ru/api/remap/1.2/audit"
 LIMIT = 100
 HEADERS = {
@@ -76,6 +76,7 @@ def fetch(endpoint: str, params: dict) -> list[dict]:
         offset += LIMIT
     return rows
 
+
 def get_max_operations_updated() -> str | None:
     """MAX(updated) + 1ms из silver.int_prep__operations_united.
     Отражает до какой точки времени мы дошли на прошлом прогоне пайплайна.
@@ -84,7 +85,7 @@ def get_max_operations_updated() -> str | None:
     try:
         with ENGINE.connect() as conn:
             row = conn.execute(
-                text("SELECT MAX(updated) FROM silver.int_prep__operations_united")
+                text("SELECT MAX(updated) FROM silver.int_prep__operations_united_cleaned")
             ).fetchone()
         if row and row[0] is not None:
             return (row[0] + timedelta(milliseconds=1)).isoformat(sep=' ', timespec='milliseconds')
@@ -105,7 +106,8 @@ def fetch_audit_doc_ids(event_type: str, since: str) -> list[dict]:
     }
     contexts, offset = [], 0
     while True:
-        r = requests.get(AUDIT_URL, headers=HEADERS, params={**params, "offset": offset}, timeout=120)
+        r = requests.get(AUDIT_URL, headers=HEADERS, params={
+                         **params, "offset": offset}, timeout=120)
         r.raise_for_status()
         page = r.json().get("rows", [])
         contexts.extend(page)
@@ -175,16 +177,17 @@ def ingest():
 
     # --- Аудит удалений и восстановлений ---
     # Холодный запуск (silver не существует) — пропускаем: данные в таблицах отражают истину.
-    # Тёплый запуск — аудит с MAX(updated из операций) + 1ms, т.е. с момента последнего прогона.
+    # Тёплый запуск — аудит с MAX(updated из активных операций) + 1ms, т.е. с момента самой новой операции из существующих.
     # Любое удаление совершённое между запусками попадёт в это окно.
     audit_since = get_max_operations_updated()
     if audit_since is None:
         logger.info("audit: операций нет — пропускаем")
     else:
-        logger.info(f"audit: инкрементально с {audit_since}")
+        logger.info(
+            f"audit: инкрементально с {audit_since} ('время+' самой новой активной операции из БД перед ingest)")
         for event_type, entity_name in [
             ("puttorecyclebin",      "audit_deleted"),
-            ("restorefromrecyclebin","audit_restored"),
+            ("restorefromrecyclebin", "audit_restored"),
         ]:
             rows = fetch_audit_doc_ids(event_type, audit_since)
             for row in rows:
