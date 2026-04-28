@@ -101,8 +101,8 @@ models:
     columns: &op_columns
       - name: doc_id
         tests: [not_null]
-      - name: position_id
-        description: "UUID позиции документа из МойСклад — ключ MERGE (позволяет хранить один товар в нескольких строках)"
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
         tests: [not_null]
       - name: moment
       - name: number

@@ -5,7 +5,7 @@
 
 SELECT
     e.raw_json->>'id'                                       AS doc_id,
-    pos->>'id'                                              AS position_id,
+    (e.raw_json->>'applicable')::boolean                    AS applicable,
     (e.raw_json->>'moment')::timestamp                    AS moment,
     e.raw_json->>'name'                                     AS number,
     coalesce(e.raw_json->'agent'->>'id', NULL)              AS agent_id,

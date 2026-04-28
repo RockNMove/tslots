@@ -1,11 +1,10 @@
--- int_prep__slots_and_zones.sql — справочник ячеек с названием зоны.
+-- int_prep__slots_all.sql — справочник ячеек с названием зоны.
 -- store_name не включён — берётся из документа через store_id,
 -- чтобы склад был корректен когда операция содержит склад, но ячейка не указана.
 
 SELECT
-    ROW_NUMBER() OVER () AS id
+    ROW_NUMBER() OVER (ORDER BY s.slot_id) AS id
     , s.slot_id
-    , s.zone_id
     , s.name AS slot_name
     , z.name AS zone_name
 FROM {{ ref('stg_moy_sklad__slots') }} s

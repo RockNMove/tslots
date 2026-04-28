@@ -456,9 +456,9 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 
 | Тест | Что проверяет |
 |---|---|
-| `assert_audit_no_duplicate_doc_id` | каждый `doc_id` встречается в `int_prep__audit_united_enriched` ровно один раз — дедупликация по последнему событию корректна |
-| `assert_cross__operations_cleaned_leq_united` | количество строк в `int_prep__operations_united_cleaned` не превышает `int_prep__operations_united` — фильтрация удалённых только убирает строки, не дублирует |
-| `assert_cross__united_count_matches_staging` | количество строк в `int_prep__operations_united` равно сумме строк во всех 5 staging-таблицах — UNION ALL не теряет и не дублирует операции |
+| `assert_audit_no_duplicate_doc_id` | каждый `doc_id` встречается в `int_prep__audit_all_latest` ровно один раз — дедупликация по последнему событию корректна |
+| `assert_cross__operations_cleaned_leq_united` | количество строк в `int_prep__operations_filtered_3pl` не превышает `int_prep__operations_all` — фильтрация только убирает строки, не дублирует |
+| `assert_cross__united_count_matches_staging` | количество строк в `int_prep__operations_all` равно сумме строк во всех 5 staging-таблицах — UNION ALL не теряет и не дублирует операции |
 | `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__agent_slot_item` по зерну (slot, item, store, day) |
 | `assert_cross__agent_spine_real_matches_operations` | `real_in` и `real_out` в spine равны суммам из operations по тому же зерну — физические движения не искажаются при агрегации по дням |
 | `assert_cross__warehouse_ops_count_matches_int_operations` | количество строк в `warehouse__operations_with_balance` равно количеству строк в `int_operations_with_balance__agent_slot_item` — витрина не фильтрует и не дублирует строки |
@@ -630,11 +630,11 @@ bronze.*               ← stg_moy_sklad__stores, stg_moy_sklad__zones,
      │                    stg_moy_sklad__loss,   stg_moy_sklad__enter, stg_moy_sklad__move,
      │                    stg_moy_sklad__audit_deleted, stg_moy_sklad__audit_restored
      ▼  [3] dbt run + test --select intermediate
-silver.*               ← prep: int_prep__operations_united,
-     │                         int_prep__audit_united_enriched,
-     │                         int_prep__operations_united_cleaned,
-     │                         int_prep__items_united_enriched,
-     │                         int_prep__slots_and_zones
+silver.*               ← prep: int_prep__operations_all,
+     │                         int_prep__audit_all_latest,
+     │                         int_prep__operations_filtered_3pl,
+     │                         int_prep__items_all,
+     │                         int_prep__slots_all
      │                    int_operations_with_balance__agent_slot_item,
      │                    int_balance__slot_item_daily_spine
      ▼  [4] dbt run + test --select marts
@@ -749,7 +749,7 @@ tslots отслеживает исключительно **движение то
 - Документ обновился в МойСклад → все строки этого `doc_id` физически удаляются из Postgres и вставляются заново. Это гарантирует корректность когда состав позиций документа изменился.
 - Документ помещён в корзину МойСклад → API его больше не возвращает (`applicable=true`), строки **остаются в bronze**.
 
-Удалённые через корзину операции не трогаются в bronze. Они исключаются на уровне silver — в `int_prep__operations_united_cleaned` через LEFT JOIN на таблицы аудита (`stg_moy_sklad__audit_deleted`, `stg_moy_sklad__audit_restored`).
+Удалённые через корзину операции не трогаются в bronze. Они исключаются на уровне silver — в `int_prep__operations_filtered_3pl` через LEFT JOIN на `int_prep__audit_all_latest` (объединяет `stg_moy_sklad__audit_deleted` и `stg_moy_sklad__audit_restored`). Там же отсекаются не-3PL товары и непроведённые документы.
 
 #### Ключевые поля движений
 
@@ -771,11 +771,11 @@ tslots отслеживает исключительно **движение то
 
 | Модель | Описание |
 |---|---|
-| int_prep__operations_united | UNION ALL из 5 staging-таблиц операций |
-| int_prep__audit_united_enriched | Актуальный статус документов из аудита МойСклад. UNION deleted + restored, берётся последнее событие по doc_id |
-| int_prep__operations_united_cleaned | Операции без удалённых документов. Исключает строки чьи doc_id помечены как 'deleted' в аудите |
-| int_prep__items_united_enriched | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
-| int_prep__slots_and_zones | Ячейки с денормализованными названиями зоны |
+| int_prep__operations_all | UNION ALL из 5 staging-таблиц операций |
+| int_prep__audit_all_latest | Актуальный статус документов из аудита МойСклад. UNION deleted + restored, берётся последнее событие по doc_id |
+| int_prep__operations_filtered_3pl | Операции готовые к аналитике: проведённые, активные (не в корзине), только 3PL-товары |
+| int_prep__items_all | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
+| int_prep__slots_all | Ячейки с денормализованными названиями зоны |
 | int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_oper_errors. INNER JOIN отфильтровывает услуги и наборы |
 | int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0. Включает items_in_slot и slot_balance_errors |
 
@@ -884,11 +884,11 @@ tslots/
 │           ├── staging/
 │           │   └── moy_sklad/   ← bronze: stg_moy_sklad__*
 │           ├── intermediate/    ← silver:
-│           │   ├── prep/           int_prep__operations_united,
-│           │   │                   int_prep__audit_united_enriched,
-│           │   │                   int_prep__operations_united_cleaned,
-│           │   │                   int_prep__items_united_enriched,
-│           │   │                   int_prep__slots_and_zones
+│           │   ├── prep/           int_prep__operations_all,
+│           │   │                   int_prep__audit_all_latest,
+│           │   │                   int_prep__operations_filtered_3pl,
+│           │   │                   int_prep__items_all,
+│           │   │                   int_prep__slots_all
 │           │   └── (корень)        int_operations_with_balance__agent_slot_item,
 │           │                       int_balance__slot_item_daily_spine
 │           └── marts/

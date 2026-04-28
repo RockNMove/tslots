@@ -1,18 +1,18 @@
 version: 2
 
 models:
-  - name: int_prep__operations_united
+  - name: int_prep__operations_all
     description: >
       UNION ALL всех операционных документов из staging.
       Объединяет 5 таблиц: demand, supply, loss, enter, move.
       move даёт по 2 строки на позицию: op_type=out из sourceSlot, op_type=in в targetSlot.
-      Зерно: одна строка на позицию документа (doc_id + position_id + op_type).
+      Зерно: одна строка на позицию документа (doc_id + item_id + op_type).
     columns:
       - name: doc_id
         description: "UUID документа"
         tests: [not_null]
-      - name: position_id
-        description: "UUID позиции документа из МойСклад"
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
         tests: [not_null]
       - name: moment
         description: "Дата и время документа"
@@ -30,7 +30,7 @@ models:
         description: "Количество (отрицательное для расхода)"
         tests: [not_null]
       - name: slot_id
-        description: "UUID ячейки хранения"
+        description: "UUID ячейки хранения ('off_slot' если ячейка не указана)"
       - name: updated
         description: "Время последнего изменения документа"
         tests: [not_null]
@@ -46,7 +46,7 @@ models:
           - accepted_values:
               values: ['in', 'out']
 
-  - name: int_prep__items_united_enriched
+  - name: int_prep__items_all
     description: >
       Единый справочник позиций (товаров и вариантов) с денормализованными атрибутами.
       В МойСклад операции ссылаются как на product, так и на variant —
@@ -89,7 +89,7 @@ models:
       - name: depositor_inn
         description: "ИНН поклажедателя"
 
-  - name: int_prep__audit_united_enriched
+  - name: int_prep__audit_all_latest
     description: >
       Актуальный статус документов по данным аудита МойСклад.
       UNION ALL двух staging-аудитов (deleted + restored), затем только последнее событие по doc_id.
@@ -113,14 +113,17 @@ models:
           - accepted_values:
               values: ['deleted', 'active']
 
-  - name: int_prep__operations_united_cleaned
+  - name: int_prep__operations_filtered_3pl
     description: >
-      Операции без удалённых документов.
-      int_prep__operations_united минус документы в корзине МойСклад (статус 'deleted' из аудита).
-      Документы без записи в аудите и восстановленные считаются активными и остаются.
-      Используется как источник для всех downstream-моделей вместо int_prep__operations_united.
+      Операции готовые к аналитике: проведённые, активные (не в корзине), только 3PL-товары.
+      Источник — int_prep__operations_all. Три фильтра:
+      applicable = 'true' — только проведённые документы.
+      INNER JOIN на int_prep__items_all — отсекает услуги, наборы и сущности без товарной карточки.
+      depositor_name != 'not_3pl' — только товары поклажедателей ответственного хранения.
+      Аудит — документы со статусом 'deleted' исключаются; без записи в аудите считаются активными.
+      Используется как единственный источник для всех downstream-моделей.
 
-  - name: int_prep__slots_and_zones
+  - name: int_prep__slots_all
     description: >
       Справочник ячеек с названием зоны. store_name не включён —
       берётся из документа через store_id, чтобы корректно показывать склад
@@ -129,8 +132,6 @@ models:
       - name: slot_id
         description: "UUID ячейки"
         tests: [unique, not_null]
-      - name: zone_id
-        description: "UUID зоны"
       - name: slot_name
         description: "Название ячейки"
         tests: [not_null]

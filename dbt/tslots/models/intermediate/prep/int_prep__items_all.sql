@@ -1,4 +1,4 @@
--- int_prep__items_united_enriched.sql — единый справочник позиций (товары и варианты).
+-- int_prep__items_all.sql — единый справочник позиций (товары и варианты).
 -- В МойСклад операции могут ссылаться как на product_id, так и на variant_id.
 -- Эта модель объединяет оба типа под общим item_id с денормализованными атрибутами:
 -- uom, depositor, lot, mfg_date — готово для JOIN в int_operations_with_balance__agent_slot_item.

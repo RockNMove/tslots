@@ -1,18 +1,18 @@
 {{ config(tags=['cross_layer']) }}
--- Таблицы: int_prep__operations_united vs 5 staging-таблиц операций
--- Инвариант: количество строк в int_prep__operations_united равно сумме строк
+-- Таблицы: int_prep__operations_all vs 5 staging-таблиц операций
+-- Инвариант: количество строк в int_prep__operations_all равно сумме строк
 --   во всех пяти staging-таблицах (demand + supply + loss + enter + move).
 -- Ответственность: полнота UNION ALL — ни одна операция не теряется при объединении.
---   int_prep__operations_united строится через UNION ALL без каких-либо фильтров.
+--   int_prep__operations_all строится через UNION ALL без фильтрации строк.
 --   Любое расхождение означает что одна из таблиц не включена или включена дважды.
--- При нарушении: проверить список таблиц в UNION ALL запросе int_prep__operations_united.
+-- При нарушении: проверить список таблиц в UNION ALL запросе int_prep__operations_all.
 SELECT
     united_count
     , staging_sum          AS staging_count
     , united_count - staging_sum AS diff
 FROM (
     SELECT COUNT(*) AS united_count
-    FROM {{ ref('int_prep__operations_united') }}
+    FROM {{ ref('int_prep__operations_all') }}
 ) u
 CROSS JOIN (
     SELECT

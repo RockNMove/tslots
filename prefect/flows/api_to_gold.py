@@ -87,14 +87,14 @@ def _fetch(endpoint: str, params: dict) -> list[dict]:
 
 
 def _get_max_operations_updated() -> str | None:
-    """MAX(updated) + 1ms из silver.int_prep__operations_united_cleaned.
+    """MAX(updated) + 1ms из silver.int_prep__operations_filtered_3pl.
     Отражает до какой точки времени мы дошли на прошлом прогоне пайплайна.
     Аудит тянем именно с этой точки — любое удаление после неё мы не видели.
     None если silver не существует (холодный запуск)."""
     try:
         with ENGINE.connect() as conn:
             row = conn.execute(
-                text("SELECT MAX(updated) FROM silver.int_prep__operations_united_cleaned")
+                text("SELECT MAX(updated) FROM silver.int_prep__operations_filtered_3pl")
             ).fetchone()
         if row and row[0] is not None:
             return (row[0] + timedelta(milliseconds=1)).isoformat(sep=' ', timespec='milliseconds')
@@ -179,16 +179,16 @@ def ingest():
     # params     — параметры API-запроса
     # aim_table  — bronze-таблица для чтения max(updated) и инкрементальной фильтрации
     endpoints = {
-        "store":        {"params": {"expand": "zones,slots.zone",                                               "limit": LIMIT}, "aim_table": "stg_moy_sklad__stores"},
+        "store":        {"params": {"expand": "zones,slots.zone",                                "limit": LIMIT}, "aim_table": "stg_moy_sklad__stores"},
         "uom":          {"params": {"limit": LIMIT}, "aim_table": "stg_moy_sklad__uoms"},
-        "product":      {"params": {"expand": "uom,attributes.value",                                          "limit": LIMIT}, "aim_table": "stg_moy_sklad__products"},
-        "variant":      {"params": {"expand": "product",                                                       "limit": LIMIT}, "aim_table": "stg_moy_sklad__variants"},
+        "product":      {"params": {"expand": "uom,attributes.value",                            "limit": LIMIT}, "aim_table": "stg_moy_sklad__products"},
+        "variant":      {"params": {"expand": "product",                                         "limit": LIMIT}, "aim_table": "stg_moy_sklad__variants"},
         "counterparty": {"params": {"limit": LIMIT}, "aim_table": "stg_moy_sklad__agents"},
-        "demand":       {"params": {"expand": "positions.slot,positions.assortment,agent,store",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__demand"},
-        "supply":       {"params": {"expand": "positions.slot,positions.assortment,agent,store",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__supply"},
-        "loss":         {"params": {"expand": "positions.slot,positions.assortment,agent,store",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__loss"},
-        "enter":        {"params": {"expand": "positions.slot,positions.assortment,agent,store",                     "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__enter"},
-        "move":         {"params": {"expand": "positions.targetSlot,positions.sourceSlot,positions.assortment,sourceStore,targetStore", "filter": "applicable=true", "limit": LIMIT}, "aim_table": "stg_moy_sklad__move"},
+        "demand":       {"params": {"expand": "positions.slot,positions.assortment,agent,store", "limit": LIMIT}, "aim_table": "stg_moy_sklad__demand"},
+        "supply":       {"params": {"expand": "positions.slot,positions.assortment,agent,store", "limit": LIMIT}, "aim_table": "stg_moy_sklad__supply"},
+        "loss":         {"params": {"expand": "positions.slot,positions.assortment,agent,store", "limit": LIMIT}, "aim_table": "stg_moy_sklad__loss"},
+        "enter":        {"params": {"expand": "positions.slot,positions.assortment,agent,store", "limit": LIMIT}, "aim_table": "stg_moy_sklad__enter"},
+        "move":         {"params": {"expand": "positions.targetSlot,positions.sourceSlot,positions.assortment,sourceStore,targetStore", "limit": LIMIT}, "aim_table": "stg_moy_sklad__move"},
     }
 
     records = []

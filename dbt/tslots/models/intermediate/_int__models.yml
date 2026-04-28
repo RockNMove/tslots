@@ -5,7 +5,7 @@ models:
     description: >
       Операции с денормализованными атрибутами, нарастающими балансами и диагностикой операционных аномалий.
       Зерно: одна строка на операцию (agent × slot × item).
-      INNER JOIN на int_prep__items_united_enriched отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
+      INNER JOIN на int_prep__items_all отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
       store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
       open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY store, slot, item); операции без slot_id = 0.
       open/close_total_balance — нарастающий остаток по товару по всем ячейкам (PARTITION BY item; move не учитывается).

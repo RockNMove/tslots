@@ -1,4 +1,4 @@
--- int_prep__audit_united_enriched.sql — актуальный статус документов по данным аудита.
+-- int_prep__audit_all_latest.sql — актуальный статус документов по данным аудита.
 -- Объединяет два staging-аудита (deleted + restored) через UNION ALL.
 -- Оставляет только последнее событие по каждому doc_id (ORDER BY moment DESC).
 -- Итоговый статус: puttorecyclebin → 'deleted', restorefromrecyclebin → 'active'.
@@ -20,7 +20,7 @@ latest AS (
     ORDER BY doc_id, moment DESC
 )
 SELECT
-    ROW_NUMBER() OVER () AS id
+    ROW_NUMBER() OVER (ORDER BY doc_id) AS id
     , doc_id
     , entity_type
     , event_type

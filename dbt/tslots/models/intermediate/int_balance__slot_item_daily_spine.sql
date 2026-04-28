@@ -106,10 +106,9 @@ WITH
         SELECT
             *
             , CASE
-                WHEN close_slot_balance > 0                                     THEN 1
-                WHEN (open_slot_balance + real_in + move_in) = -real_out
-                    AND real_out != 0                                           THEN 1
-                WHEN close_slot_balance < 0                                     THEN 2
+                WHEN close_slot_balance > 0                    THEN 1
+                WHEN close_slot_balance < 0                    THEN 2
+                WHEN close_slot_balance = 0 AND real_out != 0  THEN 1
                 ELSE 0
             END AS is_used
         FROM daily_balances
@@ -133,8 +132,8 @@ SELECT
     , i.depositor_id
     , b.moment_day
     , s.name           AS store_name
-    , COALESCE(sz.zone_name, b.slot_id) AS zone_name
-    , COALESCE(sz.slot_name, b.slot_id) AS slot_name
+    , COALESCE(sz.zone_name, 'off_zone') AS zone_name
+    , COALESCE(sz.slot_name, 'off_slot') AS slot_name
     , i.name           AS item_name
     , i.depositor_inn
     , i.depositor_name
@@ -160,7 +159,7 @@ SELECT
     ) AS slot_balance_errors
     , b.is_used
 FROM daily_with_items_in_slot b
-LEFT JOIN {{ ref('int_prep__slots_and_zones') }}        sz   ON b.slot_id = sz.slot_id
+LEFT JOIN {{ ref('int_prep__slots_all') }}               sz   ON b.slot_id = sz.slot_id
 LEFT JOIN {{ ref('stg_moy_sklad__stores') }}            s    ON b.store_id = s.store_id
-LEFT JOIN {{ ref('int_prep__items_united_enriched') }}  i    ON b.item_id = i.item_id
+LEFT JOIN {{ ref('int_prep__items_all') }}              i    ON b.item_id = i.item_id
 WHERE b.is_used != 0

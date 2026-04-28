@@ -1,9 +1,7 @@
--- int_prep__operations_united.sql — все операционные документы в единой таблице позиций.
+-- int_prep__operations_all.sql — все операционные документы в единой таблице позиций.
 -- Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
 -- move даёт по 2 строки на позицию (op_type=out из sourceSlot, op_type=in в targetSlot).
--- Ключ строки: doc_id + position_id + op_type — уникален даже когда один товар в документе в нескольких строках.
-
-WITH united AS (
+WITH united_operations AS (
     SELECT * FROM {{ ref('stg_moy_sklad__demand') }}
     UNION ALL
     SELECT * FROM {{ ref('stg_moy_sklad__supply') }}
@@ -15,6 +13,17 @@ WITH united AS (
     SELECT * FROM {{ ref('stg_moy_sklad__move') }}
 )
 SELECT
-    ROW_NUMBER() OVER () AS id
-    , *
-FROM united
+    ROW_NUMBER() OVER (ORDER BY doc_id, item_id, op_type) AS id
+    , doc_id
+    , applicable
+    , moment
+    , number
+    , agent_id
+    , store_id
+    , item_id
+    , quantity
+    , COALESCE (slot_id, 'off_slot') AS slot_id
+    , updated
+    , doc_type
+    , op_type
+FROM united_operations o
