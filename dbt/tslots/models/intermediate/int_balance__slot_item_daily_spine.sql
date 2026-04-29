@@ -8,7 +8,7 @@
 
 WITH
     -- Дневной агрегат движений по зерну (слот, товар, день, склад).
-    -- real_in/out и move_in/out уже разделены в int_operations_with_balance__agent_slot_item.
+    -- real_in/out и move_in/out уже разделены в int_operations_with_balance__slot_item.
     -- Идёт первым — grain и spine выводятся из него, чтобы не сканировать исходник дважды.
     daily_agg AS (
         SELECT
@@ -21,7 +21,7 @@ WITH
             , SUM(move_in)   AS move_in
             , SUM(real_out)  AS real_out
             , SUM(move_out)  AS move_out
-        FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
+        FROM {{ ref('int_operations_with_balance__slot_item') }}
         GROUP BY moment_day, store_id, slot_id, item_id -- store_id включен в группировку, потому что операция может быть без слота
     ),
 

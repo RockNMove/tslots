@@ -5,7 +5,7 @@ models:
     description: >
       Полная витрина всех движений по складу с нарастающими остатками и операционной диагностикой.
       Зерно: одна строка на операцию (agent × slot × item).
-      Строится на основе int_operations_with_balance__agent_slot_item. Включает все типы операций, в том числе move.
+      Строится на основе int_operations_with_balance__slot_item. Включает все типы операций, в том числе move.
       open/close_slot_balance  — остаток в конкретной ячейке.
       open/close_total_balance — остаток по товару в целом.
       slot_oper_errors — операционные аномалии: отрицательный остаток, операция без ячейки.
@@ -101,6 +101,22 @@ models:
         description: "Партия"
       - name: mfg_date
         description: "Дата выработки"
+
+  - name: warehouse__slots_used_daily
+    description: >
+      Ежедневная история занятости ячеек в разрезе поклажедателей.
+      Зерно: поклажедатель × день.
+      Строится на основе int_slots_used__daily (is_used = 1, off_slot исключён).
+      Служит полной историей для биллинга и проверки monthly-агрегата (focus__slots_used_monthly).
+    columns:
+      - name: depositor_id
+        description: "UUID поклажедателя"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: moment_day
+        description: "Дата"
+      - name: slots_used_day
+        description: "Кол-во уникальных занятых ячеек за день"
 
   - name: warehouse__balance_daily
     description: >

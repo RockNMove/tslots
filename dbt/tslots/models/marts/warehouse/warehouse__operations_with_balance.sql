@@ -1,5 +1,5 @@
 -- warehouse__operations_with_balance.sql — полная витрина всех движений по складу с остатками и диагностикой ячеек.
--- Строится на основе int_operations_with_balance__agent_slot_item. Включает все типы операций, в том числе move.
+-- Строится на основе int_operations_with_balance__slot_item. Включает все типы операций, в том числе move.
 -- open/close_slot_balance — остаток в конкретной ячейке; open/close_total_balance — по товару в целом.
 -- slot_oper_errors — операционные аномалии: OPER_ERROR slot overdraft, OPER_WARNING Out-of-slot operation.
 
@@ -36,5 +36,5 @@ SELECT
 	, zone_name
 	, agent_inn
 	, depositor_inn
-FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
+FROM {{ ref('int_operations_with_balance__slot_item') }}
 ORDER BY agent_name, depositor_name, item_name, store_name, slot_name, moment

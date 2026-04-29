@@ -48,7 +48,7 @@ def main():
         entrypoint="api_to_gold.py:api_to_gold",
     ).deploy(
         name="tslots_daily_deploy",
-        work_pool_name="default-agent-pool",
+        work_pool_name=WORK_POOL_NAME,
         # Каждый день в 00:00 по Москве.
         schedules=[CronSchedule(cron="0 0 * * *", timezone="Europe/Moscow")],
         description="Ежедневный pipeline: API → raw → bronze → silver → gold (00:00 МСК)",

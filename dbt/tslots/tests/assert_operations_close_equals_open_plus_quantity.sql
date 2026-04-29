@@ -1,4 +1,4 @@
--- Модель: int_operations_with_balance__agent_slot_item
+-- Модель: int_operations_with_balance__slot_item
 -- Инвариант: close_slot_balance = open_slot_balance + quantity для каждой операции.
 -- Ответственность: базовая арифметика нарастающего баланса по ячейке.
 --   open — накопленное количество до текущей операции, quantity — движение этой операции,
@@ -15,5 +15,5 @@ SELECT
     , open_slot_balance
     , quantity
     , close_slot_balance
-FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
+FROM {{ ref('int_operations_with_balance__slot_item') }}
 WHERE close_slot_balance != open_slot_balance + quantity

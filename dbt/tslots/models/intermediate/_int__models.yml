@@ -1,11 +1,12 @@
 version: 2
 
 models:
-  - name: int_operations_with_balance__agent_slot_item
+  - name: int_operations_with_balance__slot_item
     description: >
       Операции с денормализованными атрибутами, нарастающими балансами и диагностикой операционных аномалий.
-      Зерно: одна строка на операцию (agent × slot × item).
-      INNER JOIN на int_prep__items_all отфильтровывает услуги, наборы и прочие сущности без товарной карточки.
+      Зерно: одна строка на операцию (slot × item).
+      Услуги и наборы уже отфильтрованы выше в int_prep__operations_filtered_3pl (INNER JOIN).
+      LEFT JOIN на int_prep__items_all — денормализация атрибутов товара; NULL исключён гарантией upstream.
       store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
       open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY store, slot, item); операции без slot_id = 0.
       open/close_total_balance — нарастающий остаток по товару по всем ячейкам (PARTITION BY item; move не учитывается).
@@ -95,8 +96,8 @@ models:
       store_id включён в зерно — гарантирует корректный склад даже когда операция содержит склад без ячейки
       (slot_id = 'off_slot' общий для всех складов).
       Строки с is_used = 0 (пустые ячейки без оборота) исключены из финального SELECT.
-      is_used = 1: товар присутствует (close > 0) либо полный оборот за день без остатка.
-      is_used = 2: ошибка данных — отрицательный остаток.
+      is_used = 1: close > 0 (товар присутствует) либо close = 0 AND real_out != 0 (полный оборот за день без остатка).
+      is_used = 2: ошибка данных — отрицательный остаток; проверяется раньше is_used = 1.
       items_in_slot — кол-во разновидностей товара с положительным остатком в ячейке в этот день.
       slot_balance_errors — балансовые аномалии: BALANCE_WARNING slot has > 1 items, BALANCE_WARNING unexpected slot balance.
       Обогащение атрибутами (ячейка, товар) выполняется последним — только на отфильтрованных строках.
@@ -164,3 +165,24 @@ models:
         description: "Балансовые аномалии: BALANCE_WARNING slot has > 1 items / BALANCE_WARNING unexpected slot balance / '' (нет ошибок)"
       - name: is_used
         description: "Флаг занятости: 1 — товар присутствует, 2 — ошибка данных (отрицательный остаток)"
+
+  - name: int_slots_used__daily
+    description: >
+      Количество уникальных занятых ячеек (паллето-мест) по поклажедателям за каждый день.
+      Зерно: поклажедатель × день.
+      Источник — int_balance__slot_item_daily_spine (только is_used = 1, slot_id != 'off_slot').
+      off_slot исключён потому что это виртуальная ячейка, не паллето-место.
+      Используется для биллинга: агрегат по месяцам — focus__slots_used_monthly,
+      полная история по дням — warehouse__slots_used_daily.
+    columns:
+      - name: depositor_id
+        description: "UUID поклажедателя"
+        tests: [not_null]
+      - name: depositor_name
+        description: "Название поклажедателя (MAX по группе)"
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
+      - name: slots_used_day
+        description: "Кол-во уникальных ячеек с is_used = 1 за день (COUNT DISTINCT slot_id, off_slot исключён)"
+        tests: [not_null]

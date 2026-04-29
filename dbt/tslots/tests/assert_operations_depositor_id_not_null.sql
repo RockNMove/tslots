@@ -3,5 +3,5 @@
 -- Нарушение означает что у товара не заполнено поле «Поклажедатель» в МойСклад.
 
 SELECT *
-FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
+FROM {{ ref('int_operations_with_balance__slot_item') }}
 WHERE depositor_id IS NULL

@@ -5,7 +5,7 @@ models:
     description: >
       Отчёт движений товаров с нарастающим остатком — для партнёров.
       Зерно: одна строка на операцию (без move).
-      Строится на основе int_operations_with_balance__agent_slot_item. Перемещения (move) исключены.
+      Строится на основе int_operations_with_balance__slot_item. Перемещения (move) исключены.
       open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
     columns:
       - name: depositor_name

@@ -1,4 +1,4 @@
--- Таблицы: int_balance__slot_item_daily_spine ← int_operations_with_balance__agent_slot_item
+-- Таблицы: int_balance__slot_item_daily_spine ← int_operations_with_balance__slot_item
 -- Инвариант: real_in и real_out в spine равны суммам real_in и real_out из operations
 --   для одного зерна (slot_id, item_id, moment_day, store_id).
 -- Ответственность: сохранность реальных физических движений при переходе от операций к дням.
@@ -17,7 +17,7 @@ SELECT
     , a.real_out          AS spine_real_out
     , SUM(o.real_out)     AS ops_sum_real_out
 FROM {{ ref('int_balance__slot_item_daily_spine') }} a
-JOIN {{ ref('int_operations_with_balance__agent_slot_item') }} o
+JOIN {{ ref('int_operations_with_balance__slot_item') }} o
     ON  a.slot_id    = o.slot_id
     AND a.item_id    = o.item_id
     AND a.moment_day = o.moment_day

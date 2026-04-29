@@ -1,7 +1,7 @@
 {{ config(tags=['cross_layer']) }}
--- Таблицы: warehouse__operations_with_balance vs int_operations_with_balance__agent_slot_item
+-- Таблицы: warehouse__operations_with_balance vs int_operations_with_balance__slot_item
 -- Инвариант: количество строк в витрине warehouse__operations_with_balance равно
---   количеству строк в источнике int_operations_with_balance__agent_slot_item.
+--   количеству строк в источнике int_operations_with_balance__slot_item.
 -- Ответственность: полнота mart-слоя — витрина не фильтрует и не дублирует строки.
 --   warehouse__operations_with_balance строится как SELECT выбранных колонок
 --   из int_operations без дополнительных WHERE-условий.
@@ -14,7 +14,7 @@ WITH warehouse AS (
 ),
 int_ops AS (
     SELECT COUNT(*) AS cnt
-    FROM {{ ref('int_operations_with_balance__agent_slot_item') }}
+    FROM {{ ref('int_operations_with_balance__slot_item') }}
 )
 SELECT
     w.cnt    AS warehouse_count

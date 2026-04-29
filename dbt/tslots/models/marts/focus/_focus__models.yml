@@ -3,15 +3,15 @@ version: 2
 models:
   - name: focus__errors_warnings_operations
     description: >
-      Витрина операционных аномалий — строки из int_operations_with_balance__agent_slot_item
+      Витрина операционных аномалий — строки из int_operations_with_balance__slot_item
       где slot_oper_errors не пустой.
       Зерно: одна строка на операцию с диагностированной проблемой.
       Типы ошибок: OPER_ERROR slot overdraft (отрицательный остаток в ячейке),
       OPER_WARNING Out-of-slot operation (операция без указания ячейки).
       Используется для мониторинга операционных нарушений в Metabase.
     columns:
-      - name: id_operations_with_balance__agent_slot_item
-        description: "ID строки из int_operations_with_balance__agent_slot_item"
+      - name: id_operations_with_balance__slot_item
+        description: "ID строки из int_operations_with_balance__slot_item"
       - name: store_name
         description: "Название склада"
       - name: slot_oper_errors
@@ -63,14 +63,14 @@ models:
 
   - name: focus__slots_used_monthly
     description: >
-      Агрегат занятости ячеек по месяцам в разрезе поклажедателей.
+      Агрегат занятости ячеек (паллето-мест) по месяцам в разрезе поклажедателей.
       Зерно: поклажедатель × месяц.
-      Строится на основе int_balance__slot_item_daily_spine (только is_used != 0).
-      slots_used — кол-во уникальных ячеек занятых за месяц.
+      Строится на основе int_slots_used__daily (SUM slots_used_day за месяц).
+      Используется для биллинга: итоговое число паллето-место-дней по каждому поклажедателю за месяц.
     columns:
       - name: depositor_name
-        description: "Название поклажедателя"
+        description: "Название поклажедателя (MAX по группе)"
       - name: moment_month
         description: "Месяц в формате 'YYYY-MM'"
-      - name: slots_used
-        description: "Кол-во уникальных ячеек с ненулевым остатком за месяц (COUNT DISTINCT slot_id)"
+      - name: slots_used_month
+        description: "Сумма уникальных занятых ячеек за все дни месяца (паллето-место-дни)"

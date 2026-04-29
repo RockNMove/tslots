@@ -5,7 +5,7 @@
 --   move_out — расход товара из ячейки по документу перемещения, всегда <= 0.
 --   Знаки фиксированы CASE-логикой в операционной модели и сохраняются при агрегации.
 --   Нарушение означает ошибку в CASE-выражениях move_in/move_out или некорректные данные в move-документах.
--- При нарушении: проверить CASE-выражения в int_operations_with_balance__agent_slot_item
+-- При нарушении: проверить CASE-выражения в int_operations_with_balance__slot_item
 --   и агрегацию move_in/move_out в daily_agg CTE spine-модели.
 SELECT
     id

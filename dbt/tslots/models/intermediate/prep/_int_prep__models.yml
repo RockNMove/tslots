@@ -117,11 +117,50 @@ models:
     description: >
       Операции готовые к аналитике: проведённые, активные (не в корзине), только 3PL-товары.
       Источник — int_prep__operations_all. Три фильтра:
-      applicable = 'true' — только проведённые документы.
+      applicable = true — только проведённые документы (BOOLEAN).
       INNER JOIN на int_prep__items_all — отсекает услуги, наборы и сущности без товарной карточки.
       depositor_name != 'not_3pl' — только товары поклажедателей ответственного хранения.
       Аудит — документы со статусом 'deleted' исключаются; без записи в аудите считаются активными.
       Используется как единственный источник для всех downstream-моделей.
+      Схема совпадает с int_prep__operations_all плюс денормализованный depositor_name из items.
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN) — всегда true в этой модели"
+        tests: [not_null]
+      - name: moment
+        description: "Дата и время документа"
+        tests: [not_null]
+      - name: number
+        description: "Номер документа"
+      - name: agent_id
+        description: "UUID контрагента (NULL для move, loss, enter)"
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        description: "UUID позиции (variant_id или product_id)"
+        tests: [not_null]
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+        tests: [not_null]
+      - name: slot_id
+        description: "UUID ячейки хранения ('off_slot' если ячейка не указана)"
+      - name: updated
+        description: "Время последнего изменения документа"
+        tests: [not_null]
+      - name: doc_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests:
+          - accepted_values:
+              values: ['demand', 'supply', 'loss', 'enter', 'move']
+      - name: op_type
+        description: "Направление: in (приход) или out (расход)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['in', 'out']
 
   - name: int_prep__slots_all
     description: >

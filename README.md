@@ -20,7 +20,7 @@
 
 Это критично для ответственного хранения: чтобы выставить клиенту счёт за посуточное хранение в ячейках, нужно знать точное количество ячейко-дней по каждому поклажедателю. Дополнительная сложность — перемещения: когда товар перекладывают из ячейки в ячейку, занятость в день транзита требует отдельной кастомной логики подсчёта, чтобы не исказить итоговый счёт.
 
-**tslots:** `int_balance__slot_item_daily_spine` строит непрерывный ряд дат по каждой паре (ячейка × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily` и `focus__slots_used_monthly` дают готовые отчёты по занятости и агрегаты по месяцам — основу для выставления счетов поклажедателям.
+**tslots:** `int_balance__slot_item_daily_spine` строит непрерывный ряд дат по каждой паре (ячейка × товар) с флагом `is_used` и раздельными полями `real_in/out` и `move_in/out`. `warehouse__balance_daily` даёт детальный отчёт по занятости ячеек. `int_slots_used__daily` агрегирует уникальные занятые ячейки по поклажедателям за каждый день — `warehouse__slots_used_daily` хранит полную историю, `focus__slots_used_monthly` даёт итоговые паллето-место-дни за месяц как основу для выставления счетов.
 
 ### 3. Нет SQL-доступа к данным
 
@@ -420,7 +420,7 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 
 ### Текущие тесты
 
-**Операционная модель** (`int_operations_with_balance__agent_slot_item`):
+**Операционная модель** (`int_operations_with_balance__slot_item`):
 
 | Тест | Что проверяет |
 |---|---|
@@ -459,9 +459,9 @@ pipenv run dbt test --profiles-dir . --select assert_<имя_теста>
 | `assert_audit_no_duplicate_doc_id` | каждый `doc_id` встречается в `int_prep__audit_all_latest` ровно один раз — дедупликация по последнему событию корректна |
 | `assert_cross__operations_cleaned_leq_united` | количество строк в `int_prep__operations_filtered_3pl` не превышает `int_prep__operations_all` — фильтрация только убирает строки, не дублирует |
 | `assert_cross__united_count_matches_staging` | количество строк в `int_prep__operations_all` равно сумме строк во всех 5 staging-таблицах — UNION ALL не теряет и не дублирует операции |
-| `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__agent_slot_item` по зерну (slot, item, store, day) |
+| `assert_cross__agent_spine_qty_matches_operations` | `quantity` в `int_balance__slot_item_daily_spine` равна сумме `quantity` из `int_operations_with_balance__slot_item` по зерну (slot, item, store, day) |
 | `assert_cross__agent_spine_real_matches_operations` | `real_in` и `real_out` в spine равны суммам из operations по тому же зерну — физические движения не искажаются при агрегации по дням |
-| `assert_cross__warehouse_ops_count_matches_int_operations` | количество строк в `warehouse__operations_with_balance` равно количеству строк в `int_operations_with_balance__agent_slot_item` — витрина не фильтрует и не дублирует строки |
+| `assert_cross__warehouse_ops_count_matches_int_operations` | количество строк в `warehouse__operations_with_balance` равно количеству строк в `int_operations_with_balance__slot_item` — витрина не фильтрует и не дублирует строки |
 | `assert_cross__partners_count_matches_ops_non_move` | количество строк в `partners__nrb_stock_movements` равно количеству строк в int_operations с фильтром `doc_type != 'move'` — memo-перемещения корректно исключены |
 | `assert_cross__operations_slot_id_exists_in_slots` | каждый `slot_id` в операциях (кроме `off_slot`) присутствует в справочнике ячеек — нет ссылок на удалённые ячейки |
 
@@ -515,7 +515,7 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 
 **Поклажедатель** — тот, кому фактически принадлежит товар. Поклажедатель хранится как дополнительное поле `Поклажедатель` в карточке товара в МойСклад. В теории один агент может размещать на складе товары разных поклажедателей — тогда у одного агента будет несколько поклажедателей. На практике в большинстве случаев агент и поклажедатель совпадают. Поле `Поклажедатель` — атрибут товара, а не документа.
 
-Не каждый товар в МойСклад является объектом ответственного хранения — `depositor_id` может быть `NULL` в staging-модели `stg_moy_sklad__products`. Это нормально: не все товары принимаются на ответственное хранение. Однако в операциях tslots (`int_operations_with_balance__agent_slot_item`) `depositor_id` **всегда заполнен** — это инвариант, проверяемый тестом `not_null`. Если у товара нет поклажедателя, такой товар не должен участвовать в операциях ответственного хранения.
+Не каждый товар в МойСклад является объектом ответственного хранения — `depositor_id` может быть `NULL` в staging-модели `stg_moy_sklad__products`. Это нормально: не все товары принимаются на ответственное хранение. Однако в операциях tslots (`int_operations_with_balance__slot_item`) `depositor_id` **всегда заполнен** — это инвариант, проверяемый тестом `not_null`. Если у товара нет поклажедателя, такой товар не должен участвовать в операциях ответственного хранения.
 
 **Поклажедатель — критически важное поле для учёта занятости.** В перемещениях, списаниях и оприходованиях контрагент по природе операции не указывается — `agent_id` пустой. Без поклажедателя такие операции теряли бы привязку к клиенту и занятость ячеек считалась бы неверно. Поклажедатель задаётся в карточке товара и доступен для любой операции независимо от её типа.
 
@@ -532,7 +532,7 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 
 Дни без каких-либо операций по ячейке spine заполняет автоматически: ячейка сохраняет предыдущий остаток, `quantity = 0`, флаг `is_used` определяется по `close_slot_balance`.
 
-Для выставления счетов используется количество **ячейко-дней** — строк с `is_used = 1` по каждому поклажедателю за период. Агрегат по месяцам — `focus__slots_used_monthly`.
+Для выставления счетов используется количество **паллето-место-дней** — уникальных занятых ячеек с `is_used = 1` по каждому поклажедателю за каждый день. Ежедневный срез — `warehouse__slots_used_daily`, агрегат по месяцам для биллинга — `focus__slots_used_monthly` (SUM `slots_used_day` за месяц). Виртуальная ячейка `off_slot` из подсчёта исключена.
 
 #### Нормы и аномалии
 
@@ -635,12 +635,14 @@ silver.*               ← prep: int_prep__operations_all,
      │                         int_prep__operations_filtered_3pl,
      │                         int_prep__items_all,
      │                         int_prep__slots_all
-     │                    int_operations_with_balance__agent_slot_item,
-     │                    int_balance__slot_item_daily_spine
+     │                    int_operations_with_balance__slot_item,
+     │                    int_balance__slot_item_daily_spine,
+     │                    int_slots_used__daily
      ▼  [4] dbt run + test --select marts
 gold.*                 ← warehouse: warehouse__operations_with_balance,
      │                              warehouse__balance_daily,
-     │                              warehouse__balance_daily_no_slots
+     │                              warehouse__balance_daily_no_slots,
+     │                              warehouse__slots_used_daily
      │                    partners: partners__nrb_stock_movements
      │                    focus:    focus__slots_used_monthly,
      │                              focus__errors_warnings_operations,
@@ -697,7 +699,7 @@ Metabase дашборды
 - Цены, себестоимость, финансовые документы (счета, платежи, договоры)
 - Заказы покупателей и поставщикам
 - Сборочные задания, производственные операции
-- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_operations_with_balance__agent_slot_item` через INNER JOIN на справочник товаров
+- **Услуги и наборы** — позиции таких типов отфильтровываются на уровне `int_operations_with_balance__slot_item` через INNER JOIN на справочник товаров
 
 tslots отслеживает исключительно **движение товаров в разрезе ячеек, контрагентов и поклажедателей**. Всё что не является товаром (`product` или `variant`) в аналитику не попадает.
 
@@ -776,14 +778,15 @@ tslots отслеживает исключительно **движение то
 | int_prep__operations_filtered_3pl | Операции готовые к аналитике: проведённые, активные (не в корзине), только 3PL-товары |
 | int_prep__items_all | Единый справочник позиций: варианты + товары, с uom, lot, expected_bin_qty |
 | int_prep__slots_all | Ячейки с денормализованными названиями зоны |
-| int_operations_with_balance__agent_slot_item | Операции с атрибутами, балансами и slot_oper_errors. INNER JOIN отфильтровывает услуги и наборы |
+| int_operations_with_balance__slot_item | Операции с атрибутами, балансами и slot_oper_errors. INNER JOIN отфильтровывает услуги и наборы |
 | int_balance__slot_item_daily_spine | Ежедневная сетка (slot × item × день). Непрерывный ряд дат. Только строки с is_used != 0. Включает items_in_slot и slot_balance_errors |
+| int_slots_used__daily | Кол-во уникальных занятых ячеек (паллето-мест) по поклажедателям за день. Зерно: поклажедатель × день. off_slot исключён |
 
 Все модели — таблицы.
 
 #### Операционная модель с балансами
 
-`int_operations_with_balance__agent_slot_item` — каждая строка одна операция. Здесь считаются нарастающие балансы по операции (не по дням):
+`int_operations_with_balance__slot_item` — каждая строка одна операция. Здесь считаются нарастающие балансы по операции (не по дням):
 
 - `open_slot_balance` — накопленное количество в ячейке строго до текущей операции (`ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING`, упорядочено по моменту операции)
 - `close_slot_balance` — после текущей операции (`CURRENT ROW`)
@@ -793,7 +796,7 @@ tslots отслеживает исключительно **движение то
 
 Диагностика разделена на два поля в разных моделях:
 
-**`slot_oper_errors`** (`int_operations_with_balance__agent_slot_item`) — операционные аномалии на уровне отдельной операции. Формируется через `CONCAT_WS(' | ', ...)`. Пустая строка `''` означает отсутствие аномалий.
+**`slot_oper_errors`** (`int_operations_with_balance__slot_item`) — операционные аномалии на уровне отдельной операции. Формируется через `CONCAT_WS(' | ', ...)`. Пустая строка `''` означает отсутствие аномалий.
 
 | Значение | Условие | Смысл |
 |---|---|---|
@@ -840,12 +843,13 @@ tslots отслеживает исключительно **движение то
 
 | Папка | Модель | Источник | Описание |
 |---|---|---|---|
-| warehouse | warehouse__operations_with_balance | int_operations_with_balance__agent_slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_oper_errors |
+| warehouse | warehouse__operations_with_balance | int_operations_with_balance__slot_item | Все движения с open/close балансами по ячейке и total, диагностика slot_oper_errors |
 | warehouse | warehouse__balance_daily | int_balance__slot_item_daily_spine | Занятые ячейки по дням: балансы и real/move in/out по поклажедателям |
 | warehouse | warehouse__balance_daily_no_slots | int_balance__slot_item_daily_spine | Остатки и оборот по товарам без разбивки по ячейкам (зерно: товар × день) |
-| partners | partners__nrb_stock_movements | int_operations_with_balance__agent_slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
-| focus | focus__slots_used_monthly | int_balance__slot_item_daily_spine | Агрегат занятости ячеек по месяцам в разрезе поклажедателей |
-| focus | focus__errors_warnings_operations | int_operations_with_balance__agent_slot_item | Операции с аномалиями (slot_oper_errors != '') — для мониторинга в Metabase |
+| warehouse | warehouse__slots_used_daily | int_slots_used__daily | Ежедневная история паллето-мест по поклажедателям (зерно: поклажедатель × день) |
+| partners | partners__nrb_stock_movements | int_operations_with_balance__slot_item | Движения без move, с нарастающим остатком — для поклажедателей |
+| focus | focus__slots_used_monthly | int_slots_used__daily | Паллето-место-дни по месяцам в разрезе поклажедателей — основа биллинга |
+| focus | focus__errors_warnings_operations | int_operations_with_balance__slot_item | Операции с аномалиями (slot_oper_errors != '') — для мониторинга в Metabase |
 | focus | focus__slot_errors_warnings_balance | int_balance__slot_item_daily_spine | Балансовые аномалии ячеек на последний день (slot_balance_errors != '') — для мониторинга в Metabase |
 
 Все модели — таблицы.
@@ -889,12 +893,14 @@ tslots/
 │           │   │                   int_prep__operations_filtered_3pl,
 │           │   │                   int_prep__items_all,
 │           │   │                   int_prep__slots_all
-│           │   └── (корень)        int_operations_with_balance__agent_slot_item,
-│           │                       int_balance__slot_item_daily_spine
+│           │   └── (корень)        int_operations_with_balance__slot_item,
+│           │                       int_balance__slot_item_daily_spine,
+│           │                       int_slots_used__daily
 │           └── marts/
 │               ├── warehouse/   ← warehouse__operations_with_balance,
 │               │                   warehouse__balance_daily,
-│               │                   warehouse__balance_daily_no_slots
+│               │                   warehouse__balance_daily_no_slots,
+│               │                   warehouse__slots_used_daily
 │               ├── partners/    ← partners__nrb_stock_movements
 │               └── focus/       ← focus__slots_used_monthly,
 │                                   focus__errors_warnings_operations,

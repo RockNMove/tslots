@@ -2,15 +2,15 @@
 -- Объединяет 5 staging-таблиц: demand, supply, loss, enter, move.
 -- move даёт по 2 строки на позицию (op_type=out из sourceSlot, op_type=in в targetSlot).
 WITH united_operations AS (
-    SELECT * FROM {{ ref('stg_moy_sklad__demand') }}
+    SELECT doc_id, applicable, moment, number, agent_id, store_id, item_id, quantity, slot_id, updated, doc_type, op_type FROM {{ ref('stg_moy_sklad__demand') }}
     UNION ALL
-    SELECT * FROM {{ ref('stg_moy_sklad__supply') }}
+    SELECT doc_id, applicable, moment, number, agent_id, store_id, item_id, quantity, slot_id, updated, doc_type, op_type FROM {{ ref('stg_moy_sklad__supply') }}
     UNION ALL
-    SELECT * FROM {{ ref('stg_moy_sklad__loss') }}
+    SELECT doc_id, applicable, moment, number, agent_id, store_id, item_id, quantity, slot_id, updated, doc_type, op_type FROM {{ ref('stg_moy_sklad__loss') }}
     UNION ALL
-    SELECT * FROM {{ ref('stg_moy_sklad__enter') }}
+    SELECT doc_id, applicable, moment, number, agent_id, store_id, item_id, quantity, slot_id, updated, doc_type, op_type FROM {{ ref('stg_moy_sklad__enter') }}
     UNION ALL
-    SELECT * FROM {{ ref('stg_moy_sklad__move') }}
+    SELECT doc_id, applicable, moment, number, agent_id, store_id, item_id, quantity, slot_id, updated, doc_type, op_type FROM {{ ref('stg_moy_sklad__move') }}
 )
 SELECT
     ROW_NUMBER() OVER (ORDER BY doc_id, item_id, op_type) AS id
