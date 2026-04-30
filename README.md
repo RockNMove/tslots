@@ -325,15 +325,13 @@ cat ~/.ssh/github_actions  # скопируй вывод — это приват
 | `SSH_HOST` | IP сервера |
 | `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
 
-**3. Активируй workflow** — файл `deploy.yml` уже готов, но пока отключён: папка называется `.github_disabled/workflows/` вместо `.github/workflows/`. GitHub ищет workflow-файлы только в `.github/workflows/` — папки с другим именем игнорирует.
+**3. Workflow уже активен** — папка `.github/workflows/deploy.yml` в репозитории. GitHub автоматически подхватывает workflow при каждом `push` в `main`.
 
-Чтобы активировать:
-- Переименуй папку `.github_disabled` → `.github` и закоммить
-- Убедись что у Personal Access Token (которым пушишь) включён scope **workflow**: GitHub → Settings → Developer settings → Personal access tokens → Edit → поставить галочку `workflow`
+> Если при пуше получаешь ошибку вида `refusing to allow... workflows`, значит у Personal Access Token не включён scope **workflow**: GitHub → Settings → Developer settings → Personal access tokens → Edit → поставить галочку `workflow`. Это одноразовая настройка.
 
-После этого каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
+После добавления Secrets каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
 
-> `.env` не в git — изменения в нём вносятся на сервере вручную через `nano /opt/tslots/.env` и применяются отдельным `docker-compose up -d`.
+> **`.env` и `git pull`** — `.env` прописан в `.gitignore`, поэтому git его не трогает ни в одну сторону: не коммитится в репозиторий и не перезаписывается при `git pull` во время деплоя. Создаёшь файл на сервере один раз — он живёт независимо от всех последующих деплоев. Вносить изменения вручную: `nano /opt/tslots/.env`, затем `docker-compose up -d`.
 
 ---
 
