@@ -6,8 +6,8 @@ SELECT
     MAX(depositor_name)        AS depositor_name
     , MAX(item_name)           AS item_name
     , moment_day
-    , SUM(real_in + real_out)  AS real_quantity
     , MAX(open_total_balance)  AS open_total_balance
+    , SUM(real_in + real_out)  AS real_quantity
     , MAX(close_total_balance) AS close_total_balance
     , MAX(depositor_inn)       AS depositor_inn
     , MAX(article)             AS article
