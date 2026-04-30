@@ -2,12 +2,12 @@
 -- Объединяет два staging-аудита (deleted + restored) через UNION ALL.
 -- Оставляет только последнее событие по каждому doc_id (ORDER BY moment DESC).
 -- Итоговый статус: puttorecyclebin → 'deleted', restorefromrecyclebin → 'active'.
--- Используется в int_operations_with_balance для LEFT JOIN — проставить статус документу.
+-- Используется в int_prep__operations_filtered_3pl для LEFT JOIN — исключить удалённые документы.
 
 WITH united AS (
-    SELECT * FROM {{ ref('stg_moy_sklad__audit_deleted') }}
+    SELECT doc_id, entity_type, event_type, name, moment FROM {{ ref('stg_moy_sklad__audit_deleted') }}
     UNION ALL
-    SELECT * FROM {{ ref('stg_moy_sklad__audit_restored') }}
+    SELECT doc_id, entity_type, event_type, name, moment FROM {{ ref('stg_moy_sklad__audit_restored') }}
 ),
 latest AS (
     SELECT DISTINCT ON (doc_id)

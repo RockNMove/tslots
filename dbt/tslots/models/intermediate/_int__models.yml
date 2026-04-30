@@ -13,6 +13,9 @@ models:
       slot_oper_errors — операционные аномалии: OPER_ERROR slot overdraft, OPER_WARNING Out-of-slot operation.
       Аномалии баланса (несколько товаров в ячейке, расхождение с expected_bin_qty) перенесены в int_balance__slot_item_daily_spine.
     columns:
+      - name: id
+        description: "Суррогатный ключ строки (унаследован из int_prep__operations_all; используется в focus__errors_warnings_operations)"
+        tests: [not_null, unique]
       - name: item_id
         description: "UUID позиции"
       - name: slot_id
@@ -102,6 +105,9 @@ models:
       slot_balance_errors — балансовые аномалии: BALANCE_WARNING slot has > 1 items, BALANCE_WARNING unexpected slot balance.
       Обогащение атрибутами (ячейка, товар) выполняется последним — только на отфильтрованных строках.
     columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY store, slot, item, day); используется в focus__slot_errors_warnings_balance"
+        tests: [not_null, unique]
       - name: store_id
         description: "UUID склада"
       - name: slot_id

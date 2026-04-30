@@ -1,24 +1,26 @@
+-- stg_moy_sklad__zones.sql — справочник зон хранения.
+-- Зерно: zone_id. Incremental merge по updated.
+-- Источник: entity = 'store' → jsonb_array_elements(zones.rows).
+-- Инкрементальный фильтр применяется к store.updated — зоны вложены в склад, store.updated >= zone.updated.
 {{ config(materialized='incremental', unique_key='zone_id', incremental_strategy='merge') }}
 
-with stores as (
-    select
-        raw_json->>'id'     as store_id,
+WITH stores AS (
+    SELECT
+        raw_json->>'id' AS store_id,
         raw_json
-    from {{ source('moysklad', 'raw') }}
-    where entity = 'store'
-    -- если выполняется
+    FROM {{ source('moysklad', 'raw') }}
+    WHERE entity = 'store'
     {% if is_incremental() %}
-    -- то приклеить к основному запросу это
-        and (raw_json->>'updated')::timestamp > COALESCE((select max(updated) from {{ this }}), '1970-01-01'::timestamp)
+        AND (raw_json->>'updated')::timestamp > COALESCE((SELECT MAX(updated) FROM {{ this }}), '1970-01-01'::timestamp)
     {% endif %}
 )
 
-select
-    zone->>'id'                                 as zone_id,
+SELECT
+    zone->>'id'                                 AS zone_id,
     s.store_id,
-    zone->>'name'                               as name,
-    (zone->>'updated')::timestamp             as updated
-from stores s,
+    zone->>'name'                               AS name,
+    (zone->>'updated')::timestamp               AS updated
+FROM stores s,
      jsonb_array_elements(
-         coalesce(s.raw_json->'zones'->'rows', '[]'::jsonb)
-     ) as zone
+         COALESCE(s.raw_json->'zones'->'rows', '[]'::jsonb)
+     ) AS zone

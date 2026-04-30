@@ -8,6 +8,9 @@ models:
       move даёт по 2 строки на позицию: op_type=out из sourceSlot, op_type=in в targetSlot.
       Зерно: одна строка на позицию документа (doc_id + item_id + op_type).
     columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY doc_id, item_id, op_type)"
+        tests: [not_null, unique]
       - name: doc_id
         description: "UUID документа"
         tests: [not_null]
@@ -94,7 +97,11 @@ models:
       Актуальный статус документов по данным аудита МойСклад.
       UNION ALL двух staging-аудитов (deleted + restored), затем только последнее событие по doc_id.
       status: 'deleted' — документ в корзине, 'active' — активен или восстановлен.
+      Используется в int_prep__operations_filtered_3pl для исключения удалённых документов.
     columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY doc_id)"
+        tests: [not_null, unique]
       - name: doc_id
         description: "UUID документа"
         tests: [not_null]
@@ -122,7 +129,7 @@ models:
       depositor_name != 'not_3pl' — только товары поклажедателей ответственного хранения.
       Аудит — документы со статусом 'deleted' исключаются; без записи в аудите считаются активными.
       Используется как единственный источник для всех downstream-моделей.
-      Схема совпадает с int_prep__operations_all плюс денормализованный depositor_name из items.
+      Схема совпадает с int_prep__operations_all (SELECT o.*).
     columns:
       - name: doc_id
         description: "UUID документа"
@@ -168,6 +175,9 @@ models:
       берётся из документа через store_id, чтобы корректно показывать склад
       когда операция содержит склад, но ячейка не указана.
     columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY slot_id)"
+        tests: [not_null, unique]
       - name: slot_id
         description: "UUID ячейки"
         tests: [unique, not_null]

@@ -1,14 +1,16 @@
+-- stg_moy_sklad__uoms.sql — справочник единиц измерения.
+-- Зерно: uom_id. Incremental merge по updated.
 {{ config(materialized='incremental', unique_key='uom_id', incremental_strategy='merge') }}
 
-select
-    raw_json->>'id'                                 as uom_id,
-    raw_json->>'name'                               as name,
-    (raw_json->>'updated')::timestamp             as updated
-from {{ source('moysklad', 'raw') }}
-where entity = 'uom'
-  and raw_json->>'id' is not null
+SELECT
+    raw_json->>'id'                                 AS uom_id,
+    raw_json->>'name'                               AS name,
+    (raw_json->>'updated')::timestamp               AS updated
+FROM {{ source('moysklad', 'raw') }}
+WHERE entity = 'uom'
+  AND raw_json->>'id' IS NOT NULL
 -- если выполняется
 {% if is_incremental() %}
 -- то приклеить к основному запросу это
-    and (raw_json->>'updated')::timestamp > COALESCE((select max(updated) from {{ this }}), '1970-01-01'::timestamp)
+    AND (raw_json->>'updated')::timestamp > COALESCE((SELECT MAX(updated) FROM {{ this }}), '1970-01-01'::timestamp)
 {% endif %}

@@ -128,6 +128,9 @@ models:
     columns:
       - name: doc_id
         tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
+        tests: [not_null]
       - name: moment
       - name: number
       - name: agent_id
@@ -147,6 +150,9 @@ models:
     description: "Позиции документов «Оприходование»"
     columns:
       - name: doc_id
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
         tests: [not_null]
       - name: moment
       - name: number

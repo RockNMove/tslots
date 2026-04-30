@@ -8,7 +8,7 @@ SELECT
     (l.raw_json->>'applicable')::boolean                    AS applicable,
     (l.raw_json->>'moment')::timestamp                    AS moment,
     l.raw_json->>'name'                                     AS number,
-    coalesce(l.raw_json->'agent'->>'id', NULL)              AS agent_id,
+    l.raw_json->'agent'->>'id'                              AS agent_id,
     l.raw_json->'store'->>'id'                              AS store_id,
     pos->'assortment'->>'id'                                AS item_id,
     (pos->>'quantity')::numeric * -1                        AS quantity,

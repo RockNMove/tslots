@@ -38,7 +38,7 @@ models:
   - name: focus__slot_errors_warnings_balance
     description: >
       Витрина балансовых аномалий ячеек — строки из int_balance__slot_item_daily_spine
-      где slot_balance_errors не пустой, только за последний день.
+      где slot_balance_errors не пустой AND close_slot_balance != 0, только за последний день.
       Зерно: одна строка на (слот × товар) с балансовой проблемой на текущую дату.
       Типы предупреждений: BALANCE_WARNING slot has > 1 items (несколько товаров в ячейке),
       BALANCE_WARNING unexpected slot balance (остаток не совпадает с expected_bin_qty).
