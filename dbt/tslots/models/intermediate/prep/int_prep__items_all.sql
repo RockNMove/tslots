@@ -11,7 +11,7 @@ WITH items AS (
         variant_id AS item_id
         , p.depositor_id
         , p.expected_bin_qty
-        , CONCAT(p.name, ' (',v.lot,',',v.mfg_date,')') AS name
+        , CONCAT(p.name, ' (',v.lot,', ',v.mfg_date,')') AS name
         , v.updated
         , p.name AS product
         , v.lot
