@@ -1,0 +1,188 @@
+version: 2
+
+models:
+  - name: int_prep__operations_all
+    description: >
+      UNION ALL всех операционных документов из staging.
+      Объединяет 5 таблиц: demand, supply, loss, enter, move.
+      move даёт по 2 строки на позицию: op_type=out из sourceSlot, op_type=in в targetSlot.
+      Зерно: одна строка на позицию документа (doc_id + item_id + op_type).
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY doc_id, item_id, op_type)"
+        tests: [not_null, unique]
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
+        tests: [not_null]
+      - name: moment
+        description: "Дата и время документа"
+        tests: [not_null]
+      - name: number
+        description: "Номер документа"
+      - name: agent_id
+        description: "UUID контрагента (NULL для move, loss, enter)"
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        description: "UUID позиции (variant_id или product_id)"
+        tests: [not_null]
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+        tests: [not_null]
+      - name: slot_id
+        description: "UUID ячейки хранения ('off_slot' если ячейка не указана)"
+      - name: updated
+        description: "Время последнего изменения документа"
+        tests: [not_null]
+      - name: doc_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests:
+          - accepted_values:
+              values: ['demand', 'supply', 'loss', 'enter', 'move']
+      - name: op_type
+        description: "Направление: in (приход) или out (расход)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['in', 'out']
+
+  - name: int_prep__items_all
+    description: >
+      Единый справочник позиций (товаров и вариантов) с денормализованными атрибутами.
+      В МойСклад операции ссылаются как на product, так и на variant —
+      эта модель объединяет оба типа под общим item_id.
+      Содержит uom, depositor, lot, mfg_date, expected_bin_qty.
+    columns:
+      - name: id
+        description: "Порядковый номер строки (ROW_NUMBER ORDER BY item_id) — суррогатный ключ для витрин"
+        tests: [not_null, unique]
+      - name: item_id
+        description: "UUID позиции — variant_id для вариантов, product_id для товаров без вариантов"
+        tests: [not_null, unique]
+      - name: depositor_id
+        description: "UUID поклажедателя (из атрибута товара)"
+      - name: expected_bin_qty
+        description: "Кол-во единиц товара в одной ячейке (атрибут из МойСклад)"
+      - name: name
+        description: "Полное название: для варианта — 'товар (партия, дата)', для товара — просто название"
+        tests: [not_null]
+      - name: updated
+        description: "Время последнего обновления записи"
+        tests: [not_null]
+      - name: product
+        description: "Название родительского товара (NULL для строк-товаров без вариантов)"
+      - name: lot
+        description: "Партия — характеристика варианта (NULL для товаров без вариантов)"
+      - name: mfg_date
+        description: "Дата выработки — характеристика варианта (NULL для товаров без вариантов)"
+      - name: article
+        description: "Артикул товара"
+      - name: weight
+        description: "Вес товара"
+      - name: volume
+        description: "Объём товара"
+      - name: uom
+        description: "Название единицы измерения"
+        tests: [not_null]
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+
+  - name: int_prep__audit_all_latest
+    description: >
+      Актуальный статус документов по данным аудита МойСклад.
+      UNION ALL двух staging-аудитов (deleted + restored), затем только последнее событие по doc_id.
+      status: 'deleted' — документ в корзине, 'active' — активен или восстановлен.
+      Используется в int_prep__operations_filtered_3pl для исключения удалённых документов.
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY doc_id)"
+        tests: [not_null, unique]
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+      - name: event_type
+        description: "Последнее событие: puttorecyclebin или restorefromrecyclebin"
+      - name: moment
+        description: "Время последнего события"
+      - name: name
+        description: "Номер документа"
+      - name: status
+        description: "Статус документа: 'deleted' или 'active'"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['deleted', 'active']
+
+  - name: int_prep__operations_filtered_3pl
+    description: >
+      Операции готовые к аналитике: проведённые, активные (не в корзине), только 3PL-товары.
+      Источник — int_prep__operations_all. Три фильтра:
+      applicable = true — только проведённые документы (BOOLEAN).
+      INNER JOIN на int_prep__items_all — отсекает услуги, наборы и сущности без товарной карточки.
+      depositor_name != 'not_3pl' — только товары поклажедателей ответственного хранения.
+      Аудит — документы со статусом 'deleted' исключаются; без записи в аудите считаются активными.
+      Используется как единственный источник для всех downstream-моделей.
+      Схема совпадает с int_prep__operations_all (SELECT o.*).
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN) — всегда true в этой модели"
+        tests: [not_null]
+      - name: moment
+        description: "Дата и время документа"
+        tests: [not_null]
+      - name: number
+        description: "Номер документа"
+      - name: agent_id
+        description: "UUID контрагента (NULL для move, loss, enter)"
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        description: "UUID позиции (variant_id или product_id)"
+        tests: [not_null]
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+        tests: [not_null]
+      - name: slot_id
+        description: "UUID ячейки хранения ('off_slot' если ячейка не указана)"
+      - name: updated
+        description: "Время последнего изменения документа"
+        tests: [not_null]
+      - name: doc_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests:
+          - accepted_values:
+              values: ['demand', 'supply', 'loss', 'enter', 'move']
+      - name: op_type
+        description: "Направление: in (приход) или out (расход)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['in', 'out']
+
+  - name: int_prep__slots_all
+    description: >
+      Справочник ячеек с названием зоны. store_name не включён —
+      берётся из документа через store_id, чтобы корректно показывать склад
+      когда операция содержит склад, но ячейка не указана.
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY slot_id)"
+        tests: [not_null, unique]
+      - name: slot_id
+        description: "UUID ячейки"
+        tests: [unique, not_null]
+      - name: slot_name
+        description: "Название ячейки"
+        tests: [not_null]
+      - name: zone_name
+        description: "Название зоны (NULL если ячейка без зоны)"

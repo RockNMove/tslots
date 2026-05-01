@@ -4,8 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pandas = "==3.0.2"
 dbt-postgres = "==1.10.0"
+prefect = "==3.6.27"
+requests = "==2.31.0"
+pandas = "==3.0.0"
+sqlalchemy = "==2.0.36"
+pg8000 = "==1.31.2"
 
 [dev-packages]
 

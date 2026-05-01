@@ -1,0 +1,9 @@
+.env
+*.pyc
+__pycache__/
+dbt/tslots/target/
+dbt/tslots/logs/
+dbt/tslots/.user.yml
+*.log
+.prefect/
+temp

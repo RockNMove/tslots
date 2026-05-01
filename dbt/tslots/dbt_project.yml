@@ -1,0 +1,24 @@
+name: tslots
+version: 1.0.0
+config-version: 2
+profile: tslots
+model-paths:
+  - models
+test-paths:
+  - tests
+seed-paths:
+  - seeds
+macro-paths:
+  - macros
+models:
+  tslots:
+    staging:
+      +materialized: table
+      +schema: bronze
+    intermediate:
+      +materialized: table
+      +schema: silver
+    marts:
+      +materialized: table
+      +schema: gold
+target-path: target

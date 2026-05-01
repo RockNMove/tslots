@@ -1,0 +1,229 @@
+version: 2
+
+models:
+  - name: stg_moy_sklad__agents
+    description: "Контрагенты (поклажедатели и прочие агенты) из МойСклад"
+    columns:
+      - name: agent_id
+        description: "UUID контрагента"
+        tests: [unique, not_null]
+      - name: name
+        tests: [not_null]
+      - name: inn
+      - name: updated
+
+  - name: stg_moy_sklad__products
+    description: "Номенклатура (товары) из МойСклад"
+    columns:
+      - name: product_id
+        description: "UUID товара"
+        tests: [unique, not_null]
+      - name: name
+        tests: [not_null]
+      - name: article
+      - name: weight
+      - name: volume
+      - name: uom_id
+      - name: depositor_id
+        description: "UUID поклажедателя — атрибут 'Поклажедатель' из МойСклад. Может быть NULL: не каждый товар является объектом ответственного хранения"
+      - name: expected_bin_qty
+        description: "Кол-во единиц товара в одной ячейке — атрибут 'Кол-во в ячейке' из МойСклад"
+      - name: updated
+
+  - name: stg_moy_sklad__variants
+    description: "Варианты товаров с характеристиками (партия, дата выработки)"
+    columns:
+      - name: variant_id
+        description: "UUID варианта"
+        tests: [unique, not_null]
+      - name: product_id
+        description: "UUID родительского товара"
+        tests:
+          - not_null
+      - name: lot
+        description: "Партия — характеристика варианта"
+      - name: mfg_date
+        description: "Дата выработки — характеристика варианта"
+      - name: updated
+
+  - name: stg_moy_sklad__uoms
+    description: "Единицы измерения из МойСклад"
+    columns:
+      - name: uom_id
+        description: "UUID единицы измерения"
+        tests: [unique, not_null]
+      - name: name
+        tests: [not_null]
+      - name: updated
+
+  - name: stg_moy_sklad__stores
+    description: "Склады верхнего уровня из МойСклад"
+    columns:
+      - name: store_id
+        description: "UUID склада"
+        tests: [unique, not_null]
+      - name: name
+        tests: [not_null]
+      - name: updated
+
+  - name: stg_moy_sklad__zones
+    description: "Зоны хранения внутри склада"
+    columns:
+      - name: zone_id
+        description: "UUID зоны"
+        tests: [unique, not_null]
+      - name: store_id
+        description: "UUID родительского склада"
+        tests:
+          - not_null
+      - name: name
+        tests: [not_null]
+      - name: updated
+
+  - name: stg_moy_sklad__slots
+    description: "Ячейки хранения — минимальная адресная единица склада"
+    columns:
+      - name: slot_id
+        description: "UUID ячейки"
+        tests: [unique, not_null]
+      - name: store_id
+        description: "UUID склада-родителя"
+        tests:
+          - not_null
+      - name: zone_id
+        description: "UUID зоны (опционально)"
+      - name: name
+        tests: [not_null]
+      - name: updated
+
+  - name: stg_moy_sklad__demand
+    description: "Позиции документов «Реализация» (отгрузки клиентам)"
+    columns: &op_columns
+      - name: doc_id
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__supply
+    description: "Позиции документов «Приёмка» (поступления от поставщиков)"
+    columns: *op_columns
+
+  - name: stg_moy_sklad__loss
+    description: "Позиции документов «Списание»"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__enter
+    description: "Позиции документов «Оприходование»"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: applicable
+        description: "Признак проведённости документа (BOOLEAN)"
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests: [not_null]
+
+  - name: stg_moy_sklad__audit_deleted
+    description: "Документы помещённые в корзину МойСклад. Зерно: doc_id + event_type + moment"
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests: [not_null]
+      - name: event_type
+        description: "Тип события аудита — всегда puttorecyclebin"
+        tests: [not_null]
+      - name: name
+        description: "Номер документа"
+      - name: moment
+        description: "Время события"
+        tests: [not_null]
+
+  - name: stg_moy_sklad__audit_restored
+    description: "Документы восстановленные из корзины МойСклад. Зерно: doc_id + event_type + moment"
+    columns:
+      - name: doc_id
+        description: "UUID документа"
+        tests: [not_null]
+      - name: entity_type
+        description: "Тип документа: demand, supply, loss, enter, move"
+        tests: [not_null]
+      - name: event_type
+        description: "Тип события аудита — всегда restorefromrecyclebin"
+        tests: [not_null]
+      - name: name
+        description: "Номер документа"
+      - name: moment
+        description: "Время события"
+        tests: [not_null]
+
+  - name: stg_moy_sklad__move
+    description: "Позиции документов «Перемещение». Каждая позиция — две строки: out (sourceSlot) и in (targetSlot)"
+    columns:
+      - name: doc_id
+        tests: [not_null]
+      - name: moment
+      - name: number
+      - name: agent_id
+      - name: store_id
+        description: "UUID склада документа"
+      - name: item_id
+        tests: [not_null]
+      - name: quantity
+        tests: [not_null]
+      - name: slot_id
+      - name: updated
+      - name: doc_type
+      - name: op_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['in', 'out']

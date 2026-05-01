@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: partners__nrb_stock_movements
+    description: >
+      Отчёт движений товаров с нарастающим остатком — для партнёров.
+      Зерно: одна строка на операцию (без move).
+      Строится на основе int_operations_with_balance__slot_item. Перемещения (move) исключены.
+      open_balance / close_balance — нарастающий остаток по товару по всем складам; move не учитывается.
+    columns:
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: article
+        description: "Артикул товара"
+      - name: item_name
+        description: "Название позиции"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: doc_time
+        description: "Дата и время операции"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter)"
+      - name: doc_name
+        description: "Номер документа"
+      - name: open_balance
+        description: "Остаток товара до операции (без учёта перемещений)"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: close_balance
+        description: "Остаток товара после операции (без учёта перемещений)"

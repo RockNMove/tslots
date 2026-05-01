@@ -1,0 +1,194 @@
+version: 2
+
+models:
+  - name: int_operations_with_balance__slot_item
+    description: >
+      Операции с денормализованными атрибутами, нарастающими балансами и диагностикой операционных аномалий.
+      Зерно: одна строка на операцию (slot × item).
+      Услуги и наборы уже отфильтрованы выше в int_prep__operations_filtered_3pl (INNER JOIN).
+      LEFT JOIN на int_prep__items_all — денормализация атрибутов товара; NULL исключён гарантией upstream.
+      store_name берётся из документа (по store_id) — работает корректно когда ячейка не указана.
+      open/close_slot_balance  — нарастающий остаток в ячейке (PARTITION BY store, slot, item); операции без slot_id = 0.
+      open/close_total_balance — нарастающий остаток по товару по всем ячейкам (PARTITION BY item; move не учитывается).
+      slot_oper_errors — операционные аномалии: OPER_ERROR slot overdraft, OPER_WARNING Out-of-slot operation.
+      Аномалии баланса (несколько товаров в ячейке, расхождение с expected_bin_qty) перенесены в int_balance__slot_item_daily_spine.
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (унаследован из int_prep__operations_all; используется в focus__errors_warnings_operations)"
+        tests: [not_null, unique]
+      - name: item_id
+        description: "UUID позиции"
+      - name: slot_id
+        description: "UUID ячейки; 'off_slot' если ячейка не указана в документе"
+      - name: store_id
+        description: "UUID склада (из документа)"
+      - name: agent_id
+        description: "UUID контрагента"
+      - name: depositor_id
+        description: "UUID поклажедателя — not_null: товары без поклажедателя не принимаются в ответственное хранение; целостность гарантируется на уровне МойСклад"
+        tests:
+          - not_null
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке"
+      - name: store_name
+        description: "Название склада (из документа, не из ячейки)"
+      - name: zone_name
+        description: "Название зоны"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: doc_name
+        description: "Номер документа"
+      - name: moment
+        description: "Дата и время операции"
+        tests: [not_null]
+      - name: moment_day
+        description: "Дата операции (moment::date)"
+      - name: op_type
+        description: "Направление движения: in или out"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: quantity
+        description: "Количество по операции (отрицательное для расхода)"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter): quantity если doc_type != move и quantity > 0, иначе 0"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss): quantity если doc_type != move и quantity < 0, иначе 0"
+      - name: move_in
+        description: "Приход от перемещений: quantity если doc_type = move и quantity > 0, иначе 0"
+      - name: move_out
+        description: "Расход от перемещений: quantity если doc_type = move и quantity < 0, иначе 0"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции (PARTITION BY store, slot, item)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам до операции (move не учитывается)"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам после операции"
+      - name: slot_oper_errors
+        description: "Операционные аномалии: OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation / '' (нет ошибок)"
+      - name: uom
+        description: "Единица измерения"
+      - name: item_name
+        description: "Полное название позиции"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: article
+        description: "Артикул"
+      - name: weight
+        description: "Вес"
+      - name: volume
+        description: "Объём"
+      - name: agent_name
+        description: "Название контрагента"
+      - name: agent_inn
+        description: "ИНН контрагента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+
+  - name: int_balance__slot_item_daily_spine
+    description: >
+      Атомарная ежедневная сетка занятых ячеек с нарастающими балансами, флагом занятости и балансовой диагностикой.
+      Зерно: склад × слот × товар × день (непрерывный ряд дат от первой операции до CURRENT_DATE).
+      store_id включён в зерно — гарантирует корректный склад даже когда операция содержит склад без ячейки
+      (slot_id = 'off_slot' общий для всех складов).
+      Строки с is_used = 0 (пустые ячейки без оборота) исключены из финального SELECT.
+      is_used = 1: close > 0 (товар присутствует) либо close = 0 AND real_out != 0 (полный оборот за день без остатка).
+      is_used = 2: ошибка данных — отрицательный остаток; проверяется раньше is_used = 1.
+      items_in_slot — кол-во разновидностей товара с положительным остатком в ячейке в этот день.
+      slot_balance_errors — балансовые аномалии: BALANCE_WARNING slot has > 1 items, BALANCE_WARNING unexpected slot balance.
+      Обогащение атрибутами (ячейка, товар) выполняется последним — только на отфильтрованных строках.
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (ROW_NUMBER ORDER BY store, slot, item, day); используется в focus__slot_errors_warnings_balance"
+        tests: [not_null, unique]
+      - name: store_id
+        description: "UUID склада"
+      - name: slot_id
+        description: "UUID ячейки; 'off_slot' если операция без ячейки"
+      - name: item_id
+        description: "UUID товара/варианта"
+        tests: [not_null]
+      - name: depositor_id
+        description: "UUID поклажедателя"
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
+      - name: store_name
+        description: "Название склада"
+      - name: zone_name
+        description: "Название зоны"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке (из карточки товара)"
+      - name: open_slot_balance
+        description: "Остаток в ячейке на начало дня (PARTITION BY store, slot, item)"
+        tests: [not_null]
+      - name: quantity
+        description: "Нетто изменение остатка за день (все операции)"
+        tests: [not_null]
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня"
+        tests: [not_null]
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам на начало дня (PARTITION BY item; move не учитывается)"
+        tests: [not_null]
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам на конец дня"
+        tests: [not_null]
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter) за день"
+      - name: move_in
+        description: "Приход от перемещений за день"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) за день — отрицательное число"
+      - name: move_out
+        description: "Расход от перемещений за день — отрицательное число"
+      - name: items_in_slot
+        description: "Кол-во разновидностей товара с close_slot_balance > 0 в ячейке в этот день (PARTITION BY store, slot, day)"
+      - name: slot_balance_errors
+        description: "Балансовые аномалии: BALANCE_WARNING slot has > 1 items / BALANCE_WARNING unexpected slot balance / '' (нет ошибок)"
+      - name: is_used
+        description: "Флаг занятости: 1 — товар присутствует, 2 — ошибка данных (отрицательный остаток)"
+
+  - name: int_slots_used__daily
+    description: >
+      Количество уникальных занятых ячеек (паллето-мест) по поклажедателям за каждый день.
+      Зерно: поклажедатель × день.
+      Источник — int_balance__slot_item_daily_spine (только is_used = 1, slot_id != 'off_slot').
+      off_slot исключён потому что это виртуальная ячейка, не паллето-место.
+      Используется для биллинга: агрегат по месяцам — focus__slots_used_monthly,
+      полная история по дням — warehouse__slots_used_daily.
+    columns:
+      - name: depositor_id
+        description: "UUID поклажедателя"
+        tests: [not_null]
+      - name: depositor_name
+        description: "Название поклажедателя (MAX по группе)"
+      - name: moment_day
+        description: "Дата"
+        tests: [not_null]
+      - name: slots_used_day
+        description: "Кол-во уникальных ячеек с is_used = 1 за день (COUNT DISTINCT slot_id, off_slot исключён)"
+        tests: [not_null]

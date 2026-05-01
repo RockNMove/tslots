@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: moysklad
+    schema: layer_raw
+    description: "Сырые данные из МойСклад API (загружает Prefect flow tslots-ingest)"
+
+    tables:
+      - name: raw
+        description: "Все сущности МойСклад — одна строка = один объект API, entity = тип объекта"
+        columns:
+          - name: entity
+            description: "Тип объекта МойСклад (product, variant, store, uom, counterparty, demand, supply, loss, enter, move)"
+            tests: [not_null]
+          - name: raw_json
+            description: "Полный JSON объекта из API МойСклад"
+            tests: [not_null]

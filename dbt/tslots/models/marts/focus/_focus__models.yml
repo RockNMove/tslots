@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: focus__errors_warnings_operations
+    description: >
+      Витрина операционных аномалий — строки из int_operations_with_balance__slot_item
+      где slot_oper_errors не пустой.
+      Зерно: одна строка на операцию с диагностированной проблемой.
+      Типы ошибок: OPER_ERROR slot overdraft (отрицательный остаток в ячейке),
+      OPER_WARNING Out-of-slot operation (операция без указания ячейки).
+      Используется для мониторинга операционных нарушений в Metabase.
+    columns:
+      - name: id_operations_with_balance__slot_item
+        description: "ID строки из int_operations_with_balance__slot_item"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_oper_errors
+        description: "Операционные аномалии: OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation"
+      - name: moment_day
+        description: "Дата операции"
+      - name: doc_name
+        description: "Номер документа"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: op_type
+        description: "Направление операции: in / out"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: item_name
+        description: "Название товара/варианта"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+
+  - name: focus__slot_errors_warnings_balance
+    description: >
+      Витрина балансовых аномалий ячеек — строки из int_balance__slot_item_daily_spine
+      где slot_balance_errors не пустой AND close_slot_balance != 0, только за последний день.
+      Зерно: одна строка на (слот × товар) с балансовой проблемой на текущую дату.
+      Типы предупреждений: BALANCE_WARNING slot has > 1 items (несколько товаров в ячейке),
+      BALANCE_WARNING unexpected slot balance (остаток не совпадает с expected_bin_qty).
+      Используется для ежедневного контроля состояния ячеек в Metabase.
+    columns:
+      - name: slot_item_daily_spine_id
+        description: "ID строки из int_balance__slot_item_daily_spine"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_balance_errors
+        description: "Балансовые аномалии: BALANCE_WARNING slot has > 1 items / BALANCE_WARNING unexpected slot balance"
+      - name: moment_day
+        description: "Дата (последний день в spine)"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: item_name
+        description: "Название товара/варианта"
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня (только ненулевые: AND close_slot_balance != 0)"
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке"
+
+  - name: focus__slots_used_monthly
+    description: >
+      Агрегат занятости ячеек (паллето-мест) по месяцам в разрезе поклажедателей.
+      Зерно: поклажедатель × месяц.
+      Строится на основе int_slots_used__daily (SUM slots_used_day за месяц).
+      Используется для биллинга: итоговое число паллето-место-дней по каждому поклажедателю за месяц.
+    columns:
+      - name: depositor_name
+        description: "Название поклажедателя (MAX по группе)"
+      - name: moment_month
+        description: "Месяц в формате 'YYYY-MM'"
+      - name: slots_used_month
+        description: "Сумма уникальных занятых ячеек за все дни месяца (паллето-место-дни)"

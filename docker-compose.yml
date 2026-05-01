@@ -1,0 +1,153 @@
+# =============================================================================
+# tslots — docker-compose.yml
+#
+# Четыре контейнера в одной внутренней сети:
+#
+#   postgres         — база данных (raw, bronze, silver, gold + метаданные Prefect и Lightdash)
+#   prefect-server   — UI и API Prefect (localhost:4200)
+#   prefect-worker   — выполняет flows (ingest, dbt)
+#   lightdash        — BI-дашборды поверх dbt-моделей (localhost:8080)
+#
+# Переменные окружения читаются из файла .env в корне проекта.
+# Docker Compose читает .env по умолчанию — он автоматически ищет файл .env
+# в той же папке где лежит docker-compose.yml, без явного указания.
+# Это встроенное поведение Docker Compose.
+# Один и тот же docker-compose.yml работает локально и на сервере —
+# меняется только .env.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: tslots-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB:       ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Prefect Server
+  # ---------------------------------------------------------------------------
+  prefect-server:
+    image: prefecthq/prefect:3.6.27-python3.11
+    container_name: tslots-prefect-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
+      PREFECT_UI_API_URL: "http://${SERVER_HOST}:4200/api"
+    command: prefect server start --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Nginx — Basic Auth перед Prefect UI
+  # ---------------------------------------------------------------------------
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: tslots-nginx
+    restart: unless-stopped
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    environment:
+      PREFECT_USER: ${PREFECT_USER}
+      PREFECT_PASSWORD: ${PREFECT_PASSWORD}
+    command: >
+      sh -c "
+        htpasswd -bc /etc/nginx/.htpasswd $$PREFECT_USER $$PREFECT_PASSWORD &&
+        nginx -g 'daemon off;'
+      "
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "${PREFECT_PORT}:4200"
+
+  # ---------------------------------------------------------------------------
+  # Prefect Worker
+  # ---------------------------------------------------------------------------
+  prefect-worker:
+    build:
+      context: ./prefect
+      dockerfile: Dockerfile
+    container_name: tslots-prefect-worker
+    restart: unless-stopped
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+      MS_TOKEN: ${MS_TOKEN}
+      DB_HOST: postgres
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DBT_DB_HOST:      postgres
+      DBT_DB_USER:      ${DB_USER}
+      DBT_DB_PASSWORD:  ${DB_PASSWORD}
+      DBT_DB_NAME:      ${DB_NAME}
+      DBT_PROJECT_DIR:  /app/dbt/tslots
+      DBT_PROFILES_DIR: /app/dbt/tslots
+    volumes:
+      - .:/app
+    command: >
+      sh -c "
+        cd /app/prefect/flows &&
+        prefect work-pool create default-agent-pool --type process || true &&
+        python deploy.py &&
+        prefect worker start --pool default-agent-pool
+      "
+
+  # ---------------------------------------------------------------------------
+  # Metabase — BI-дашборды поверх PostgreSQL
+  # ---------------------------------------------------------------------------
+  metabase:
+    image: metabase/metabase:v0.58.13
+    container_name: tslots-metabase
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Metabase хранит своё состояние (дашборды, вопросы, пользователей) в PostgreSQL.
+      MB_DB_TYPE:   postgres
+      MB_DB_HOST:   postgres
+      MB_DB_PORT:   5432
+      MB_DB_DBNAME: ${DB_NAME}
+      MB_DB_USER:   ${DB_USER}
+      MB_DB_PASS:   ${DB_PASSWORD}
+    ports:
+      - "${METABASE_PORT}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  postgres_data:

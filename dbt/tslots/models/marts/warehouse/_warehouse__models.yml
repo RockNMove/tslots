@@ -1,0 +1,173 @@
+version: 2
+
+models:
+  - name: warehouse__operations_with_balance
+    description: >
+      Полная витрина всех движений по складу с нарастающими остатками и операционной диагностикой.
+      Зерно: одна строка на операцию (agent × slot × item).
+      Строится на основе int_operations_with_balance__slot_item. Включает все типы операций, в том числе move.
+      open/close_slot_balance  — остаток в конкретной ячейке.
+      open/close_total_balance — остаток по товару в целом.
+      slot_oper_errors — операционные аномалии: отрицательный остаток, операция без ячейки.
+    columns:
+      - name: id
+        description: "Суррогатный ключ строки (унаследован из int_operations_with_balance__slot_item)"
+      - name: agent_name
+        description: "Название агента"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Название позиции"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: doc_name
+        description: "Номер документа"
+      - name: moment_day
+        description: "Дата операции"
+      - name: doc_type
+        description: "Тип документа (demand, supply, loss, enter, move)"
+      - name: op_type
+        description: "Направление: in / out"
+      - name: open_slot_balance
+        description: "Остаток в ячейке до операции"
+      - name: quantity
+        description: "Количество (отрицательное для расхода)"
+      - name: close_slot_balance
+        description: "Остаток в ячейке после операции"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам до операции"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам после операции"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter)"
+      - name: move_in
+        description: "Приход от перемещений"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) — отрицательное число"
+      - name: move_out
+        description: "Расход от перемещений — отрицательное число"
+      - name: uom
+        description: "Единица измерения"
+      - name: expected_bin_qty
+        description: "Ожидаемое кол-во товара в ячейке"
+      - name: slot_oper_errors
+        description: "Операционные аномалии: OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation / '' (нет ошибок)"
+      - name: moment
+        description: "Дата и время операции"
+      - name: article
+        description: "Артикул"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+      - name: weight
+        description: "Вес"
+      - name: volume
+        description: "Объём"
+      - name: zone_name
+        description: "Название зоны"
+      - name: agent_inn
+        description: "ИНН агента"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+
+  - name: warehouse__balance_daily_no_slots
+    description: >
+      Остатки и оборот по товарам без разбивки по ячейкам.
+      Агрегирует int_balance__slot_item_daily_spine по зерну товар × день (GROUP BY item_id, moment_day).
+      item_id используется для группировки, но не возвращается в SELECT —
+      уникальность строки определяется парой item_name × moment_day.
+      Материализована как view.
+    columns:
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: moment_day
+        description: "Дата"
+      - name: real_quantity
+        description: "Нетто реальный оборот за день (real_in + real_out)"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам на начало дня"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам на конец дня"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
+
+  - name: warehouse__slots_used_daily
+    description: >
+      Ежедневная история занятости ячеек в разрезе поклажедателей.
+      Зерно: поклажедатель × день.
+      Строится на основе int_slots_used__daily (is_used = 1, off_slot исключён).
+      Служит полной историей для биллинга и проверки monthly-агрегата (focus__slots_used_monthly).
+    columns:
+      - name: depositor_id
+        description: "UUID поклажедателя"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: moment_day
+        description: "Дата"
+      - name: slots_used_day
+        description: "Кол-во уникальных занятых ячеек за день"
+
+  - name: warehouse__balance_daily
+    description: >
+      Витрина занятых ячеек по дням в разрезе поклажедателей.
+      Зерно: слот × товар × день (только дни с is_used != 0).
+      Строится на основе int_balance__slot_item_daily_spine.
+      Материализована как view — вычисления выполнены в intermediate (silver).
+    columns:
+      - name: id
+        description: "ID строки из int_balance__slot_item_daily_spine (ROW_NUMBER ORDER BY store, slot, item, day)"
+      - name: depositor_name
+        description: "Название поклажедателя"
+      - name: item_name
+        description: "Полное название товара/варианта"
+      - name: store_name
+        description: "Название склада"
+      - name: slot_name
+        description: "Название ячейки"
+      - name: moment_day
+        description: "Дата"
+      - name: open_slot_balance
+        description: "Остаток в ячейке на начало дня"
+      - name: quantity
+        description: "Нетто изменение остатка за день"
+      - name: close_slot_balance
+        description: "Остаток в ячейке на конец дня"
+      - name: open_total_balance
+        description: "Остаток товара по всем ячейкам на начало дня"
+      - name: close_total_balance
+        description: "Остаток товара по всем ячейкам на конец дня"
+      - name: real_in
+        description: "Приход по реальным операциям (supply, enter)"
+      - name: move_in
+        description: "Приход от перемещений"
+      - name: real_out
+        description: "Расход по реальным операциям (demand, loss) — отрицательное число"
+      - name: move_out
+        description: "Расход от перемещений — отрицательное число"
+      - name: depositor_inn
+        description: "ИНН поклажедателя"
+      - name: zone_name
+        description: "Название зоны"
+      - name: article
+        description: "Артикул товара"
+      - name: product
+        description: "Название родительского товара"
+      - name: lot
+        description: "Партия"
+      - name: mfg_date
+        description: "Дата выработки"
