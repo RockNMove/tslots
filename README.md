@@ -670,6 +670,36 @@ Metabase дашборды
 
 Поля создаются в МойСклад: Настройки → Дополнительные поля → Товары.
 
+#### Характеристики вариантов
+
+tslots извлекает из вариантов только две характеристики. Их названия захардкожены в `stg_moy_sklad__variants.sql`:
+
+| Характеристика | Название в МойСклад | Колонка в модели |
+|---|---|---|
+| Партия | `Партия товара` | `lot` |
+| Дата выработки | `Дата выработки` | `mfg_date` |
+
+Если в твоём аккаунте МойСклад эти характеристики называются иначе — замени строки в `stg_moy_sklad__variants.sql`:
+
+```sql
+-- найди и замени:
+'$.characteristics[*] ? (@.name == "Партия товара").value'
+'$.characteristics[*] ? (@.name == "Дата выработки").value'
+```
+
+Аналогично для дополнительных полей товаров — в `stg_moy_sklad__products.sql`:
+
+| Атрибут | Название в МойСклад | Колонка в модели |
+|---|---|---|
+| Поклажедатель | `Поклажедатель` | `depositor_id` |
+| Кол-во в ячейке | `Кол-во в ячейке` | `expected_bin_qty` |
+
+```sql
+-- найди и замени:
+'$.attributes[*] ? (@.name == "Поклажедатель").value.id'
+'$.attributes[*] ? (@.name == "Кол-во в ячейке").value'
+```
+
 #### С какими сущностями работает tslots
 
 **Справочники:**
@@ -919,3 +949,246 @@ tslots/
 | `tech` | Prefect (`_write_run_status`) | Служебные таблицы — **вне dbt**, создаются напрямую через SQLAlchemy |
 
 `tech.pipeline_run_log` — единственная таблица в схеме `tech`. Пишется после каждого запуска пайплайна (независимо от исхода): `id`, `started_at`, `finished_at`, `total_run_time` (PostgreSQL `INTERVAL`), `status` (`ok` / `error`).
+
+---
+
+## Справочник таблиц для BI
+
+Описание всех таблиц схем `silver` и `gold` с перечнем колонок. Используется как основа для описаний в Metabase.
+
+---
+
+### Silver — intermediate
+
+#### int_prep__operations_all
+UNION ALL из 5 staging-таблиц операций (demand, supply, loss, enter, move). Без фильтрации — все документы, все товары. Зерно: одна строка на позицию документа.
+- `id` — суррогатный ключ строки
+- `doc_id` — UUID документа
+- `applicable` — проведён ли документ (BOOLEAN)
+- `moment` — дата и время документа
+- `number` — номер документа
+- `agent_id` — UUID контрагента (NULL для move, loss, enter)
+- `store_id` — UUID склада
+- `item_id` — UUID позиции (variant_id или product_id)
+- `quantity` — количество (отрицательное для расхода)
+- `slot_id` — UUID ячейки ('off_slot' если не указана)
+- `updated` — время последнего изменения документа
+- `doc_type` — тип документа: demand / supply / loss / enter / move
+- `op_type` — направление: in / out
+
+#### int_prep__operations_filtered_3pl
+Фильтрованная версия int_prep__operations_all: только проведённые, не удалённые, только 3PL-товары. Единственный источник для всех аналитических моделей. Схема идентична int_prep__operations_all.
+
+#### int_prep__items_all
+Единый справочник позиций: варианты и товары без вариантов под одним item_id. Зерно: item_id уникален.
+- `id` — суррогатный ключ строки
+- `item_id` — UUID позиции (variant_id или product_id)
+- `name` — полное название (для варианта: «товар (партия, дата)»)
+- `product` — название родительского товара (NULL для товаров без вариантов)
+- `lot` — партия (характеристика варианта)
+- `mfg_date` — дата выработки (характеристика варианта)
+- `article` — артикул
+- `weight` — вес
+- `volume` — объём
+- `uom` — единица измерения
+- `depositor_id` — UUID поклажедателя
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `expected_bin_qty` — ожидаемое кол-во единиц товара в ячейке
+- `updated` — время обновления записи
+
+#### int_prep__audit_all_latest
+Актуальный статус документов по данным аудита МойСклад. На каждый doc_id — только последнее событие. Зерно: doc_id уникален.
+- `id` — суррогатный ключ строки
+- `doc_id` — UUID документа
+- `entity_type` — тип документа
+- `event_type` — последнее событие: puttorecyclebin / restorefromrecyclebin
+- `moment` — время последнего события
+- `name` — номер документа
+- `status` — deleted / active
+
+#### int_prep__slots_all
+Справочник ячеек с денормализованным названием зоны. Зерно: slot_id уникален.
+- `id` — суррогатный ключ строки
+- `slot_id` — UUID ячейки
+- `slot_name` — название ячейки
+- `zone_name` — название зоны
+
+#### int_operations_with_balance__slot_item
+Операции с атрибутами товара, контрагента, ячейки и нарастающими балансами. Зерно: одна строка на операцию. Операции без ячейки получают slot_id = 'off_slot'.
+- `id` — суррогатный ключ строки
+- `store_id` — UUID склада
+- `store_name` — название склада
+- `slot_id` — UUID ячейки ('off_slot' если не указана)
+- `slot_name` — название ячейки
+- `zone_name` — название зоны
+- `item_id` — UUID позиции
+- `item_name` — название позиции
+- `product` — название родительского товара
+- `lot` — партия
+- `mfg_date` — дата выработки
+- `article` — артикул
+- `weight` — вес
+- `volume` — объём
+- `uom` — единица измерения
+- `agent_id` — UUID контрагента
+- `agent_name` — название контрагента
+- `agent_inn` — ИНН контрагента
+- `depositor_id` — UUID поклажедателя
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `expected_bin_qty` — ожидаемое кол-во единиц в ячейке
+- `doc_type` — тип документа
+- `doc_name` — номер документа
+- `op_type` — направление: in / out
+- `moment` — дата и время операции
+- `moment_day` — дата операции
+- `quantity` — количество (отрицательное для расхода)
+- `real_in` — реальный приход: supply, enter
+- `real_out` — реальный расход: demand, loss (отрицательное)
+- `move_in` — приход от перемещений
+- `move_out` — расход от перемещений (отрицательное)
+- `open_slot_balance` — остаток в ячейке до операции
+- `close_slot_balance` — остаток в ячейке после операции
+- `open_total_balance` — суммарный остаток по товару до операции
+- `close_total_balance` — суммарный остаток по товару после операции
+- `slot_oper_errors` — OPER_ERROR slot overdraft / OPER_WARNING Out-of-slot operation / ''
+
+#### int_balance__slot_item_daily_spine
+Непрерывный ряд дат по каждой паре слот × товар от первой операции до сегодня. Дни без операций заполняются нулями. Строки с is_used = 0 отброшены. Зерно: store × slot × item × день.
+- `id` — суррогатный ключ строки
+- `store_id` — UUID склада
+- `store_name` — название склада
+- `slot_id` — UUID ячейки
+- `slot_name` — название ячейки
+- `zone_name` — название зоны
+- `item_id` — UUID позиции
+- `item_name` — название позиции
+- `depositor_id` — UUID поклажедателя
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `moment_day` — дата
+- `product` — название родительского товара
+- `lot` — партия
+- `mfg_date` — дата выработки
+- `article` — артикул
+- `expected_bin_qty` — ожидаемое кол-во единиц в ячейке
+- `quantity` — нетто изменение остатка за день (0 в дни без операций)
+- `real_in` — реальный приход за день
+- `real_out` — реальный расход за день
+- `move_in` — приход от перемещений за день
+- `move_out` — расход от перемещений за день
+- `open_slot_balance` — остаток в ячейке на начало дня
+- `close_slot_balance` — остаток в ячейке на конец дня
+- `open_total_balance` — суммарный остаток товара на начало дня
+- `close_total_balance` — суммарный остаток товара на конец дня
+- `items_in_slot` — кол-во товаров с положительным остатком в ячейке на этот день
+- `slot_balance_errors` — BALANCE_WARNING slot has > 1 items / BALANCE_WARNING unexpected slot balance / ''
+- `is_used` — 1 занята, 2 ошибка данных (отрицательный остаток)
+
+#### int_slots_used__daily
+Уникальные занятые ячейки (паллето-места) по поклажедателям за день. Только is_used = 1, off_slot исключён. Зерно: поклажедатель × день.
+- `depositor_id` — UUID поклажедателя
+- `depositor_name` — название поклажедателя
+- `moment_day` — дата
+- `slots_used_day` — кол-во уникальных занятых ячеек за день
+
+---
+
+### Gold — marts
+
+#### warehouse__operations_with_balance
+Полная витрина всех движений по складу с нарастающими остатками и операционной диагностикой. Зерно: одна строка на операцию. Строится на основе int_operations_with_balance__slot_item — схема идентична, колонки те же.
+
+#### warehouse__balance_daily
+Занятые ячейки по дням с балансами и разбивкой оборота на real/move. Только строки с is_used != 0. Зерно: store × slot × item × день. Материализована как view.
+- `id` — ID строки из int_balance__slot_item_daily_spine
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `store_name` — название склада
+- `zone_name` — название зоны
+- `slot_name` — название ячейки
+- `item_name` — название позиции
+- `product` — название родительского товара
+- `lot` — партия
+- `mfg_date` — дата выработки
+- `article` — артикул
+- `moment_day` — дата
+- `quantity` — нетто изменение остатка за день
+- `real_in` — реальный приход за день
+- `real_out` — реальный расход за день
+- `move_in` — приход от перемещений за день
+- `move_out` — расход от перемещений за день
+- `open_slot_balance` — остаток в ячейке на начало дня
+- `close_slot_balance` — остаток в ячейке на конец дня
+- `open_total_balance` — суммарный остаток товара на начало дня
+- `close_total_balance` — суммарный остаток товара на конец дня
+
+#### warehouse__balance_daily_no_slots
+Остатки и оборот по товарам без разбивки по ячейкам. Агрегат int_balance__slot_item_daily_spine по зерну товар × день. Материализована как view.
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `item_name` — название позиции
+- `product` — название родительского товара
+- `lot` — партия
+- `mfg_date` — дата выработки
+- `article` — артикул
+- `moment_day` — дата
+- `real_quantity` — нетто реальный оборот за день (real_in + real_out)
+- `open_total_balance` — суммарный остаток на начало дня
+- `close_total_balance` — суммарный остаток на конец дня
+
+#### warehouse__slots_used_daily
+Ежедневная история занятости ячеек по поклажедателям. Зерно: поклажедатель × день. Строится на основе int_slots_used__daily.
+- `depositor_id` — UUID поклажедателя
+- `depositor_name` — название поклажедателя
+- `moment_day` — дата
+- `slots_used_day` — кол-во уникальных занятых ячеек за день
+
+#### partners__nrb_stock_movements
+Движения товаров с нарастающим остатком для поклажедателей. Перемещения (move) исключены. Зерно: одна строка на операцию.
+- `depositor_name` — название поклажедателя
+- `depositor_inn` — ИНН поклажедателя
+- `article` — артикул
+- `item_name` — название позиции
+- `product` — название родительского товара
+- `lot` — партия
+- `mfg_date` — дата выработки
+- `doc_time` — дата и время операции
+- `doc_type` — тип документа (demand / supply / loss / enter)
+- `doc_name` — номер документа
+- `open_balance` — суммарный остаток товара до операции
+- `quantity` — количество (отрицательное для расхода)
+- `close_balance` — суммарный остаток товара после операции
+
+#### focus__slots_used_monthly
+Паллето-место-дни по месяцам в разрезе поклажедателей. Основа для биллинга ответственного хранения. Зерно: поклажедатель × месяц.
+- `depositor_name` — название поклажедателя
+- `moment_month` — месяц в формате YYYY-MM
+- `slots_used_month` — сумма занятых ячеек за все дни месяца (паллето-место-дни)
+
+#### focus__errors_warnings_operations
+Операционные аномалии: строки из int_operations_with_balance__slot_item где slot_oper_errors не пустой. Только последний актуальный статус. Зерно: одна строка на аномальную операцию.
+- `id_operations_with_balance__slot_item` — ID строки из operations_with_balance
+- `store_name` — название склада
+- `slot_oper_errors` — тип аномалии
+- `moment_day` — дата
+- `doc_name` — номер документа
+- `doc_type` — тип документа
+- `op_type` — направление: in / out
+- `slot_name` — название ячейки
+- `item_name` — название позиции
+- `open_slot_balance` — остаток в ячейке до операции
+- `quantity` — количество
+- `close_slot_balance` — остаток в ячейке после операции
+
+#### focus__slot_errors_warnings_balance
+Балансовые аномалии ячеек на последний день в spine. Только строки где slot_balance_errors не пустой и close_slot_balance != 0. Зерно: слот × товар (только последний день).
+- `slot_item_daily_spine_id` — ID строки из int_balance__slot_item_daily_spine
+- `store_name` — название склада
+- `slot_balance_errors` — тип предупреждения
+- `moment_day` — дата (последний день в spine)
+- `slot_name` — название ячейки
+- `item_name` — название позиции
+- `close_slot_balance` — остаток на конец дня
+- `expected_bin_qty` — ожидаемое кол-во товара в ячейке
