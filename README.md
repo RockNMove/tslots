@@ -151,9 +151,8 @@ docker-compose restart prefect-server prefect-worker metabase
 **Windows** — установи [Docker Desktop](https://www.docker.com/products/docker-desktop/). После установки запусти его и убедись что в трее появился значок Docker (он должен быть запущен перед любой командой ниже).
 
 **Linux (сервер Ubuntu):**
-```bash
-curl -fsSL https://get.docker.com | sh
-```
+
+Следуй инструкциям на https://docs.docker.com/engine/install/ubuntu/
 
 ### Шаг 2 — Склонируй репозиторий
 
