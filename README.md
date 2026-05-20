@@ -162,12 +162,12 @@ docker compose restart prefect-server prefect-worker metabase
 # Локально (Windows — выполняй в терминале рядом с Docker Desktop):
 # Сначала перейди в папку где хочешь разместить проект, например:
 cd C:\Users\<имя>\Desktop
-git clone <url репозитория>
+git clone -b main <url репозитория>
 cd tslots
 
 # На сервере:
 cd /opt
-git clone <url репозитория>
+git clone -b main <url репозитория>
 cd tslots
 ```
 
@@ -329,6 +329,8 @@ git push → GitHub → Actions runner (Ubuntu VM) → SSH → сервер → 
 **1. На сервере** — сгенерируй SSH-ключ специально для GitHub Actions:
 ```bash
 ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions
+# На вопрос о пассфразе нажми Enter дважды — пассфраза не нужна,
+# иначе GitHub Actions не сможет использовать ключ автоматически
 cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
 cat ~/.ssh/github_actions  # скопируй вывод — это приватный ключ
 ```
