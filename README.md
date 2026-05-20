@@ -308,46 +308,39 @@ Flow выполнит 5 шагов: ingest → bronze → silver → gold → к
 
 ## CI/CD — автодеплой через GitHub Actions
 
-При каждом `git push` в ветку `main` GitHub автоматически заходит на сервер и применяет изменения.
+При каждом `git push` в ветку `main` сервер автоматически подтягивает изменения и перезапускает контейнеры.
+
+Используется **self-hosted runner** — агент GitHub Actions устанавливается прямо на сервер. Сервер сам подключается к GitHub и забирает задания. Это решает проблему закрытой сети: GitHub не ломится на сервер по SSH, а сервер сам инициирует соединение.
 
 ### Как это работает
 
 ```
-git push → GitHub → Actions runner (Ubuntu VM) → SSH → сервер → git pull + docker compose up -d
+git push → GitHub → self-hosted runner на сервере → git pull + docker compose up -d
 ```
 
-1. Ты пушишь в `main` — GitHub видит событие и запускает workflow
-2. GitHub поднимает чистую виртуальную машину (runner)
-3. Runner берёт SSH-ключ из зашифрованного хранилища Secrets и подключается к серверу
-4. На сервере выполняется `git pull` и `docker compose up -d`
-5. Runner уничтожается — следующий деплой получит чистую машину
+1. Ты пушишь в `main`
+2. GitHub уведомляет runner на сервере
+3. Runner выполняет `git pull` и `docker compose up -d --build` локально на сервере
 
-Секреты (ключ, IP, пользователь) хранятся только на стороне GitHub, в коде не появляются.
+Никаких секретов, никакого SSH извне — runner уже внутри сервера.
 
 ### Настройка (один раз)
 
-**1. На сервере** — сгенерируй SSH-ключ специально для GitHub Actions:
+**1. В GitHub** — создай runner: репозиторий → Settings → Actions → Runners → New self-hosted runner → выбери Linux → следуй инструкции на экране. GitHub покажет команды для установки и регистрации агента на сервере.
+
+**2. На сервере** — выполни команды которые показал GitHub (скачать, настроить, зарегистрировать).
+
+**3. Запусти runner как службу** чтобы он работал постоянно и запускался при перезагрузке сервера:
 ```bash
-ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions
-# На вопрос о пассфразе нажми Enter дважды — пассфраза не нужна,
-# иначе GitHub Actions не сможет использовать ключ автоматически
-cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
-cat ~/.ssh/github_actions  # скопируй вывод — это приватный ключ
+sudo ./svc.sh install
+sudo ./svc.sh start
 ```
 
-**2. В GitHub** — добавь Secrets: репозиторий → Settings → Secrets and variables → Actions → New repository secret:
-
-| Secret | Значение |
-|---|---|
-| `SSH_PRIVATE_KEY` | приватный ключ из шага 1 (весь текст включая `-----BEGIN...`) |
-| `SSH_HOST` | IP сервера |
-| `SSH_USER` | пользователь на сервере — узнать командой `whoami` на сервере |
-
-**3. Workflow уже активен** — папка `.github/workflows/deploy.yml` в репозитории. GitHub автоматически подхватывает workflow при каждом `push` в `main`.
+**4. Workflow уже активен** — папка `.github/workflows/deploy.yml` в репозитории. GitHub автоматически подхватывает workflow при каждом `push` в `main`.
 
 > Если при пуше получаешь ошибку вида `refusing to allow... workflows`, значит у Personal Access Token не включён scope **workflow**: GitHub → Settings → Developer settings → Personal access tokens → Edit → поставить галочку `workflow`. Это одноразовая настройка.
 
-После добавления Secrets каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
+После установки runner каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
 
 > **`.env` и `git pull`** — `.env` прописан в `.gitignore`, поэтому git его не трогает ни в одну сторону: не коммитится в репозиторий и не перезаписывается при `git pull` во время деплоя. Создаёшь файл на сервере один раз — он живёт независимо от всех последующих деплоев. Вносить изменения вручную: `nano /opt/tslots/.env`, затем `docker compose up -d`.
 
