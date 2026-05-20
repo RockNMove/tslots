@@ -42,16 +42,16 @@
 
 ```bash
 # Поднять всё
-docker-compose up -d --build
+docker compose up -d --build
 
 # Статус контейнеров
-docker-compose ps
+docker compose ps
 
 # Остановить (данные сохранятся)
-docker-compose down
+docker compose down
 
 # Удалить всё включая данные БД и дашборды Metabase
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Локальные тесты
@@ -73,10 +73,10 @@ pipenv run dbt build --project-dir dbt/tslots --profiles-dir dbt/tslots --select
 ### Логи
 
 ```bash
-docker-compose logs -f prefect-worker
-docker-compose logs -f postgres
-docker-compose logs -f metabase
-docker-compose logs -f nginx
+docker compose logs -f prefect-worker
+docker compose logs -f postgres
+docker compose logs -f metabase
+docker compose logs -f nginx
 ```
 
 ### Зайти внутрь контейнера
@@ -125,7 +125,7 @@ git log --all --oneline -- .env
 1. Измени значение в `.env`
 2. Перезапусти worker:
 ```bash
-docker-compose restart prefect-worker
+docker compose restart prefect-worker
 ```
 
 #### Смена DB_PASSWORD
@@ -139,7 +139,7 @@ docker exec -it tslots-postgres psql -U <DB_USER из .env> -d <DB_NAME из .en
 2. Обнови `.env`
 3. Перезапусти зависимые контейнеры:
 ```bash
-docker-compose restart prefect-server prefect-worker metabase
+docker compose restart prefect-server prefect-worker metabase
 ```
 
 ---
@@ -208,10 +208,27 @@ nano .env
 
 ### Шаг 4 — Открой порты (только на сервере)
 
+Проверь текущий статус файрвола:
 ```bash
-ufw allow <PREFECT_PORT из .env>   # Prefect UI
-ufw allow <METABASE_PORT из .env>  # Metabase
-ufw allow <DB_PORT из .env>        # PostgreSQL
+sudo ufw status
+```
+
+**Если файрвол выключен (status: inactive) — все порты открыты.** Нужно включить и закрыть лишнее:
+```bash
+sudo ufw allow 22                       # SSH — стандартный порт, обязательно первым иначе потеряешь доступ к серверу
+sudo ufw enable                         # включить файрвол (всё кроме разрешённого блокируется)
+sudo ufw allow <PREFECT_PORT из .env>   # Prefect UI
+sudo ufw allow <METABASE_PORT из .env>  # Metabase
+sudo ufw allow <DB_PORT из .env>        # PostgreSQL
+sudo ufw status                         # проверить что всё применилось
+```
+
+**Если файрвол уже включен (status: active) — порты закрыты по умолчанию.** Открой только нужные:
+```bash
+sudo ufw allow <PREFECT_PORT из .env>   # Prefect UI
+sudo ufw allow <METABASE_PORT из .env>  # Metabase
+sudo ufw allow <DB_PORT из .env>        # PostgreSQL
+sudo ufw status                         # проверить что всё применилось
 ```
 
 Если сервер в облаке (Hetzner, DigitalOcean, Yandex Cloud) — дополнительно открой эти же порты в панели управления облака в настройках сети/файрвола.
@@ -219,14 +236,14 @@ ufw allow <DB_PORT из .env>        # PostgreSQL
 ### Шаг 5 — Запусти контейнеры
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
-`--build` нужен при первом запуске — собирает образ prefect-worker. При последующих запусках достаточно `docker-compose up -d`.
+`--build` нужен при первом запуске — собирает образ prefect-worker. При последующих запусках достаточно `docker compose up -d`.
 
 Проверь что все контейнеры запустились:
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 Все пять должны быть в статусе `running`: postgres, prefect-server, prefect-worker, nginx, metabase.
@@ -251,7 +268,7 @@ docker-compose ps
 
 Нажми **Test connection** → **Save**.
 
-> Это однократная настройка — состояние хранится в PostgreSQL. `docker-compose down` без `-v` сохраняет всё. `docker-compose down -v` удаляет данные — потребуется пройти мастер заново.
+> Это однократная настройка — состояние хранится в PostgreSQL. `docker compose down` без `-v` сохраняет всё. `docker compose down -v` удаляет данные — потребуется пройти мастер заново.
 
 #### Добавление пользователей
 
@@ -296,13 +313,13 @@ Flow выполнит 5 шагов: ingest → bronze → silver → gold → к
 ### Как это работает
 
 ```
-git push → GitHub → Actions runner (Ubuntu VM) → SSH → сервер → git pull + docker-compose up -d
+git push → GitHub → Actions runner (Ubuntu VM) → SSH → сервер → git pull + docker compose up -d
 ```
 
 1. Ты пушишь в `main` — GitHub видит событие и запускает workflow
 2. GitHub поднимает чистую виртуальную машину (runner)
 3. Runner берёт SSH-ключ из зашифрованного хранилища Secrets и подключается к серверу
-4. На сервере выполняется `git pull` и `docker-compose up -d`
+4. На сервере выполняется `git pull` и `docker compose up -d`
 5. Runner уничтожается — следующий деплой получит чистую машину
 
 Секреты (ключ, IP, пользователь) хранятся только на стороне GitHub, в коде не появляются.
@@ -330,7 +347,7 @@ cat ~/.ssh/github_actions  # скопируй вывод — это приват
 
 После добавления Secrets каждый `git push` в `main` деплоит на сервер автоматически. Статус запуска виден в GitHub → Actions.
 
-> **`.env` и `git pull`** — `.env` прописан в `.gitignore`, поэтому git его не трогает ни в одну сторону: не коммитится в репозиторий и не перезаписывается при `git pull` во время деплоя. Создаёшь файл на сервере один раз — он живёт независимо от всех последующих деплоев. Вносить изменения вручную: `nano /opt/tslots/.env`, затем `docker-compose up -d`.
+> **`.env` и `git pull`** — `.env` прописан в `.gitignore`, поэтому git его не трогает ни в одну сторону: не коммитится в репозиторий и не перезаписывается при `git pull` во время деплоя. Создаёшь файл на сервере один раз — он живёт независимо от всех последующих деплоев. Вносить изменения вручную: `nano /opt/tslots/.env`, затем `docker compose up -d`.
 
 ---
 
@@ -586,14 +603,14 @@ Flow вызывает `dbt run + dbt test` для каждого слоя пос
 
 #### Volumes и хранение данных
 
-| Что | Где хранится | `docker-compose down` | `docker-compose down -v` |
+| Что | Где хранится | `docker compose down` | `docker compose down -v` |
 |---|---|---|---|
 | Данные PostgreSQL | Docker volume `postgres_data` | Сохранятся | **Удалятся** |
 | Дашборды Metabase | В PostgreSQL (`postgres_data`) | Сохранятся | **Удалятся** |
 | Код и модели | `tslots/` (в git) | Сохранятся | Сохранятся |
 | Секреты | `.env` (не в git) | Сохранятся | Сохранятся |
 
-> **Важно:** Metabase хранит все дашборды, вопросы и пользователей в PostgreSQL, а не в файлах. `docker-compose down` без флага `-v` сохраняет всё состояние. При `down -v` потребуется повторить первоначальную настройку Metabase.
+> **Важно:** Metabase хранит все дашборды, вопросы и пользователей в PostgreSQL, а не в файлах. `docker compose down` без флага `-v` сохраняет всё состояние. При `down -v` потребуется повторить первоначальную настройку Metabase.
 
 #### Монтирование папок
 
@@ -890,7 +907,7 @@ tslots/
 ├── .env.example               ← шаблон — скопируй в .env и заполни
 ├── .env                       ← секреты (не в git)
 ├── .gitignore
-├── docker-compose.yml         ← вся инфраструктура
+├── docker compose.yml         ← вся инфраструктура
 ├── README.md
 │
 ├── nginx/
